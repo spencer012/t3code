@@ -88,3 +88,27 @@ project an `upstream` remote and use `upstream/main` as the integration base.
 Do not automatically rebase a dirty checkout or chase every upstream commit while
 a feature is being implemented. Do not resolve conflicts by blindly selecting
 all local or all upstream versions.
+
+## Container server installation
+
+Requested on 2026-10-08.
+
+Install the custom server in the server container without inspecting its active work.
+The Linux CLI archive built from `74b88c249e` replaces the nightly server.
+It uses the existing T3 home and connection configuration.
+
+The installed runtime is
+`continuous-usage-recovery-74b88c249e`.
+`local/current` selects it, and `bin/t3` points to that selection. Keep the
+previous npm runtime available for rollback. The original launcher metadata and
+container startup script are backed up under `local/backups/before-74b88c249e`.
+
+The container's startup script now honors `local/current/t3` before its
+configured nightly updater. Preserve this override when rebuilding the container
+image so restarts and the nightly updater keep the custom behavior.
+
+Installation checks may inspect server code, service metadata, and the read-only
+database migration ledger. Do not inspect working files, conversations, or server
+logs to perform an upgrade. Check migration IDs before switching builds and test
+the replacement with an isolated data home. The deployed build passed those
+checks and responded on the existing port, `3773`.
