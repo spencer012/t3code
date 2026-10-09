@@ -161,7 +161,7 @@ Corrected on 2026-10-09.
 
 Keep the thread-title and sidebar menus able to start or stop continuous recovery
 when the usage-limit banner is absent. This also lets the user re-enable a flag
-cleared by an older buggy build. The corrected server build `62296af749` is deployed
+cleared by an older buggy build. The corrected server build `f25cceab9f` is deployed
 in the server container, with the prior runtime retained for rollback. Apply the same operate permission and existing-turn
 guards across web, desktop, and mobile. Preserve explicit Stop/archive/settle
 cancellation and queue delivery. Do not re-enable previously cleared flags without
@@ -184,3 +184,10 @@ updates retain the draft and never claim success. Keep operate permissions,
 existing-turn validation, and old-server compatibility checks. Disabling the
 mode leaves current agents and consoles running. This remains a mode for the
 current task, with the existing completion and explicit cancellation rules.
+
+The matching Windows and Linux packages were rebuilt from `f25cceab9f`, and
+the container now serves that build. Its previous runtime is retained. The
+container had been recreated since the earlier deployment, preserving the
+runtime cache while restoring the upstream startup script. The local-runtime
+override was restored, with that startup script backed up beside it. Verify both the startup
+override and the running executable after each upgrade or container recreation.
