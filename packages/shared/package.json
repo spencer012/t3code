@@ -542,6 +542,10 @@
     "./speech": {
       "types": "./src/speech.ts",
       "import": "./src/speech.ts"
+    },
+    "./customBuild": {
+      "types": "./src/customBuild.ts",
+      "import": "./src/customBuild.ts"
     }
   },
   "scripts": {

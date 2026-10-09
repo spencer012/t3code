@@ -1,3 +1,4 @@
+import { CUSTOM_APP_DISPLAY_NAME } from "@t3tools/shared/customBuild";
 import type {
   DesktopAppBranding,
   DesktopAppStageLabel,
@@ -106,7 +107,7 @@ export function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName: CUSTOM_APP_DISPLAY_NAME,
   };
 }
 
