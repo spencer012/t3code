@@ -102,6 +102,8 @@ import {
   isBufferedProviderNotification,
   isUndeliveredMailboxSteer,
 } from "./NotificationMailbox.ts";
+import { continuousRecoveryDecision } from "./ContinuousRecovery.ts";
+
 import { EventSinkV2 } from "./EventSink.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import type { OrchestrationEffectRequestV2, PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
@@ -481,6 +483,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "checkpoint.rollback":
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
+    case "thread.continuation.check":
     case "thread.stop":
     case "provider.switch":
       return command.threadId;
@@ -2864,12 +2867,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       markUnreadVisitedAt = DateTime.subtract(latestRunCompletedAt, { milliseconds: 1 });
     }
+    const recoveryShell =
+      command.type === "thread.metadata.update" && command.continuousRecovery !== undefined
+        ? yield* projectionStore.getThreadShell(command.threadId).pipe(mapDispatchError(command))
+        : null;
+    if (
+      command.type === "thread.metadata.update" &&
+      command.continuousRecovery === true &&
+      (recoveryShell?.latestRunId == null ||
+        thread.archivedAt !== null ||
+        thread.deletedAt !== null ||
+        thread.settledOverride === "settled")
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Only an unsettled conversation with an existing turn can continue automatically.",
+      });
+    }
     const updatedThread: OrchestrationV2AppThread = (() => {
       switch (command.type) {
         case "thread.archive":
           return {
             ...thread,
             archivedAt: now,
+            continuousRecovery: null,
             titleRegeneration: null,
             pullRequests: thread.pullRequests?.map((link) => withPullRequestWatch(link, undefined)),
             updatedAt: now,
@@ -2883,6 +2905,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             settledOverride: "settled",
+            continuousRecovery: null,
             settledAt: alreadySettled ? thread.settledAt : (command.settledAt ?? now),
             pullRequests: thread.pullRequests?.map((link) => withPullRequestWatch(link, undefined)),
             unsettledAt: null,
@@ -2977,14 +3000,42 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         case "thread.mark-unread":
           return { ...thread, lastVisitedAt: markUnreadVisitedAt };
         case "thread.metadata.update": {
+          const continuousRecovery =
+            command.continuousRecovery === undefined
+              ? thread.continuousRecovery
+              : command.continuousRecovery
+                ? {
+                    requestId: command.commandId,
+                    attempt: 0,
+                    nextAttemptAt: DateTime.formatIso(
+                      DateTime.makeUnsafe(
+                        Math.max(
+                          DateTime.toEpochMillis(now),
+                          Date.parse(recoveryShell?.usageLimitResetAt ?? "") || 0,
+                        ),
+                      ),
+                    ),
+                  }
+                : null;
           const previousRecovery =
             thread.limitRecovery?.runId === command.limitRecovery?.runId &&
             thread.limitRecovery?.resetAt === command.limitRecovery?.resetAt
               ? thread.limitRecovery
               : null;
-          const limitRecovery =
+          const limitRecovery: OrchestrationV2AppThread["limitRecovery"] =
             command.limitRecovery === undefined
-              ? thread.limitRecovery
+              ? command.continuousRecovery !== undefined &&
+                recoveryShell?.lastErrorClass === "usage_limit" &&
+                recoveryShell.latestRunId !== null &&
+                recoveryShell.usageLimitResetAt != null
+                ? {
+                    requestId: command.commandId,
+                    runId: recoveryShell.latestRunId,
+                    resetAt: recoveryShell.usageLimitResetAt,
+                    autoResume: false,
+                    snooze: thread.limitRecovery?.snooze ?? false,
+                  }
+                : thread.limitRecovery
               : command.limitRecovery === null
                 ? null
                 : {
@@ -2997,7 +3048,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             ...(command.title === undefined ? {} : { title: command.title }),
-            ...(command.limitRecovery === undefined ? {} : { limitRecovery }),
+            ...(command.limitRecovery === undefined && command.continuousRecovery === undefined
+              ? {}
+              : { limitRecovery }),
+            ...(command.continuousRecovery === undefined ? {} : { continuousRecovery }),
             ...(command.limitRecovery !== undefined &&
             limitRecovery?.snooze === true &&
             Date.parse(limitRecovery.resetAt) > DateTime.toEpochMillis(now)
@@ -4589,6 +4643,98 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           },
         } satisfies PendingOrchestrationEffectV2,
       ]);
+    });
+
+  const dispatchContinuousRecovery = (
+    command: Extract<
+      OrchestrationV2InternalCommand,
+      { readonly type: "thread.continuation.check" }
+    >,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+  ) =>
+    Effect.gen(function* () {
+      const projection = yield* loadProjectionForCommand(
+        command,
+        ["runs", "providerThreads", "runtimeRequests", "subagents", "turnItems"],
+        {
+          turnItemTypes: ["error", "command_execution", "dynamic_tool", "subagent"],
+          turnItemStatuses: ["pending", "running", "waiting", "failed"],
+        },
+      );
+      const recovery = projection.thread.continuousRecovery;
+      if (recovery?.requestId !== command.requestId || recovery.attempt !== command.attempt) return;
+      const now = yield* DateTime.now;
+      const decision = continuousRecoveryDecision(
+        projection,
+        command.hasRunningConsole,
+        DateTime.toEpochMillis(now),
+      );
+      if (decision.type === "wait") return;
+      const emitEvent = emit(events, command);
+      if (decision.type === "resume_queue") {
+        for (const run of projection.runs) {
+          if (run.status !== "queued" || run.queueHeld !== true) continue;
+          yield* emitEvent({
+            type: "run.updated",
+            threadId: command.threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: { ...run, queueHeld: false },
+          });
+        }
+        return true;
+      }
+      yield* emitEvent({
+        type: "thread.metadata-updated",
+        threadId: command.threadId,
+        occurredAt: now,
+        payload: {
+          ...projection.thread,
+          continuousRecovery:
+            decision.type === "finished"
+              ? null
+              : {
+                  ...recovery,
+                  attempt: recovery.attempt + 1,
+                  nextAttemptAt: decision.nextAttemptAt,
+                },
+        },
+      });
+      if (decision.type === "finished") return;
+      // A rejected start must still persist its backoff. Stage message planning so
+      // a validation failure cannot leave partial events or retry every scheduler tick.
+      const attemptEvents = yield* Ref.make(yield* Ref.get(events));
+      const attemptEffects = yield* Ref.make<Array<PendingOrchestrationEffectV2>>([]);
+      yield* dispatchMessage(
+        {
+          type: "message.dispatch",
+          commandId: command.commandId,
+          threadId: command.threadId,
+          messageId: MessageId.make(`continuous-resume:${recovery.requestId}:${recovery.attempt}`),
+          text: "Continue where you left off. Finish the original task, including any background agents and running commands.",
+          attachments: [],
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "user",
+          creationSource: "server",
+        },
+        attemptEvents,
+        attemptEffects,
+      ).pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            yield* Ref.set(events, yield* Ref.get(attemptEvents));
+            const plannedEffects = yield* Ref.get(attemptEffects);
+            yield* Ref.update(effects, (existing) => [...existing, ...plannedEffects]);
+          }),
+        ),
+        Effect.catch((cause) =>
+          Effect.logWarning("orchestration-v2.continuous-recovery.start-rejected", {
+            threadId: command.threadId,
+            cause,
+          }),
+        ),
+      );
     });
 
   const dispatchMessage = (
@@ -8050,7 +8196,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
 
   const loadProjectionForCommand = <K extends ProjectionRecordField>(
-    command: OrchestrationV2Command,
+    command: OrchestrationV2ServerCommand,
     fields: ReadonlyArray<K>,
     filter?: ProjectionRecordFilter,
   ) =>
@@ -8878,6 +9024,30 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const bufferedMessageIds = new Set(
         queuedMessages.filter(isBufferedProviderNotification).map((message) => message.id),
       );
+      if (thread.continuousRecovery != null) {
+        const shell = yield* projectionStore
+          .getThreadShell(thread.id)
+          .pipe(mapDispatchError(input.command));
+        const limitRecovery: OrchestrationV2AppThread["limitRecovery"] =
+          shell?.lastErrorClass === "usage_limit" &&
+          shell.latestRunId !== null &&
+          shell.usageLimitResetAt != null
+            ? {
+                requestId: input.command.commandId,
+                runId: shell.latestRunId,
+                resetAt: shell.usageLimitResetAt,
+                autoResume: false,
+                snooze: thread.limitRecovery?.snooze ?? false,
+              }
+            : thread.limitRecovery;
+        yield* emitEvent({
+          type: "thread.metadata-updated",
+          threadId: thread.id,
+          occurredAt: input.now,
+          payload: { ...thread, continuousRecovery: null, limitRecovery },
+        });
+      }
+
       for (const run of runs) {
         // A resumed queue can have a lower ordinal than a pending continuation source.
         // Stop must reach those sources even when interrupting the resumed run succeeds.
@@ -8918,7 +9088,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           providerInstanceId: thread.providerInstanceId,
           occurredAt: input.now,
           payload: {
-            ...thread,
+            ...(yield* getProjectionWithPendingEvents(thread.id, input.events)).thread,
             pullRequests: pullRequests.map((link) => withPullRequestWatch(link, undefined)),
           },
         });
@@ -10840,6 +11010,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     {
       readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
       readonly effects: ReadonlyArray<PendingOrchestrationEffectV2>;
+      readonly resumeQueuedRun?: boolean;
       readonly cancelUnsettledEffects?: {
         readonly effectTypes: ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
         readonly reason: string;
@@ -10855,6 +11026,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const events = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
     const effects = yield* Ref.make<Array<PendingOrchestrationEffectV2>>([]);
+    let resumeQueuedRun: boolean | undefined;
     let cancelUnsettledEffects:
       | {
           readonly effectTypes: ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
@@ -10882,6 +11054,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           );
         if (
           thread.settledOverride !== null ||
+          thread.continuousRecovery != null ||
           DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt)
         ) {
           return yield* new OrchestratorDispatchError({
@@ -11022,6 +11195,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ]);
         }
         break;
+      case "thread.continuation.check":
+        resumeQueuedRun = yield* dispatchContinuousRecovery(command, events, effects);
+        break;
       case "thread.stop":
         cancelUnsettledEffects = yield* dispatchThreadStop(command, events, effects);
         break;
@@ -11131,6 +11307,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     return {
       events: yield* Ref.get(events),
       effects: yield* Ref.get(effects),
+      ...(resumeQueuedRun === undefined ? {} : { resumeQueuedRun }),
       ...(cancelUnsettledEffects === undefined ? {} : { cancelUnsettledEffects }),
     };
   });
@@ -11211,6 +11388,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       Effect.flatMap((planned) =>
         planned.events.length > 0 ||
         command.type === "thread.background-work.settle" ||
+        command.type === "thread.continuation.check" ||
         command.type === "thread.stop" ||
         command.type === "subagent.stop"
           ? Effect.succeed(planned)
@@ -11285,6 +11463,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             }),
         ),
       );
+      if (command.type === "thread.continuation.check" && plan.resumeQueuedRun) {
+        yield* mapDispatchError(command)(startNextQueuedRun(command.threadId));
+      }
       return { sequence: resultSequence, storedEvents: [] } satisfies OrchestratorV2DispatchResult;
     }
     const acceptedAt = plan.events.at(-1)?.occurredAt ?? (yield* DateTime.now);
@@ -11318,7 +11499,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         detail: committed.receipt.error ?? "Previously rejected.",
       });
     }
-    if (command.type === "queue.resume") {
+    if (
+      command.type === "queue.resume" ||
+      (command.type === "thread.continuation.check" && plan.resumeQueuedRun)
+    ) {
       yield* mapDispatchError(command)(startNextQueuedRun(command.threadId));
     }
     if (command.type === "notification.delivery.accept") {

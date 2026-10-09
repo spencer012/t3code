@@ -1,6 +1,9 @@
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
-import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
+import {
+  continuousRecoveryBannerItem,
+  usageLimitRecoveryBannerItem,
+} from "./chat/UsageLimitRecoveryBanner";
 import {
   isThreadWokeUnseen,
   mergeDirectPreviewAnnotation,
@@ -5346,6 +5349,28 @@ export default function ChatView(props: ChatViewProps) {
     });
     return item ? [item] : [];
   });
+  const changeContinuousRecovery = async (enabled: boolean) => {
+    if (!activeThreadShell) return;
+    const result = await updateThreadMetadata({
+      environmentId,
+      input: { threadId: activeThreadShell.id, continuousRecovery: enabled },
+    });
+    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+  };
+  const continuousRecoveryBanner = activeThreadShell?.continuousRecovery
+    ? continuousRecoveryBannerItem({
+        recovery: activeThreadShell.continuousRecovery,
+        disabled: !canOperateThread,
+        waitingForInput:
+          activeThreadShell.hasPendingApprovals || activeThreadShell.hasPendingUserInput,
+        stopped:
+          serverRuntime?.status === "failed" ||
+          serverRuntime?.status === "interrupted" ||
+          serverRuntime?.status === "cancelled",
+        onStop: () => changeContinuousRecovery(false),
+      })
+    : null;
+
   const limitRecoveryBanner =
     serverRuntime?.status === "failed" &&
     serverRuntime.lastErrorClass === "usage_limit" &&
@@ -5355,6 +5380,9 @@ export default function ChatView(props: ChatViewProps) {
           resetAt: serverRuntime.usageLimitResetAt ?? null,
           stoppedAt: activeThreadShell.latestRun.completedAt ?? activeThreadShell.updatedAt,
           recovery: activeThreadShell.limitRecovery ?? null,
+          continuousRecovery: activeThreadShell.continuousRecovery ?? null,
+          disabled: !canOperateThread,
+          onContinuousChange: changeContinuousRecovery,
           snoozedUntil: activeThreadShell.snoozedUntil,
           onChange: async (limitRecovery) => {
             const result = await updateThreadMetadata({
@@ -5366,7 +5394,10 @@ export default function ChatView(props: ChatViewProps) {
         })
       : null;
   const composerBannerItems = (() => {
-    const limitRecoveryItems = limitRecoveryBanner === null ? [] : [limitRecoveryBanner];
+    const limitRecoveryItems = [limitRecoveryBanner, continuousRecoveryBanner].filter(
+      (item) => item !== null,
+    );
+
     const backgroundWorkItems = [
       childInputBannerItem,
       goalBannerItem,
@@ -5432,6 +5463,7 @@ export default function ChatView(props: ChatViewProps) {
       },
     ];
   })() as ComposerBannerStackItem[];
+
 
   // A launch context only overrides the drawer's cwd until the thread's own
   // location catches up, the drawer closes, or the thread changes.

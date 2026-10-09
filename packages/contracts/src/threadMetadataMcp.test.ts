@@ -53,6 +53,22 @@ describe("ThreadMetadataMcpUpdateInput", () => {
     );
   });
 
+  it("requires an explicit choice for continuous recovery", () => {
+    assert.deepEqual(decodeUpdate({ action: "continuous_recovery", enabled: true }), {
+      action: "continuous_recovery",
+      enabled: true,
+    });
+    assert.deepEqual(decodeUpdate({ action: "continuous_recovery", enabled: false }), {
+      action: "continuous_recovery",
+      enabled: false,
+    });
+    assert.throws(() => decodeUpdate({ action: "continuous_recovery" }));
+    assert.throws(() =>
+      decodeUpdate({ action: "continuous_recovery", enabled: true, title: "Invalid" }),
+    );
+    assert.throws(() => decodeUpdate({ action: "rename", title: "Invalid", enabled: true }));
+  });
+
   it("rejects unknown actions", () => {
     assert.throws(() => decodeUpdate({ action: "move_workspace" }));
   });

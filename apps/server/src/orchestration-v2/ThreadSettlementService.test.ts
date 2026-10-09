@@ -3,6 +3,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import {
   DEFAULT_SERVER_SETTINGS,
+  CommandId,
   ProjectId,
   EventId,
   ProviderInstanceId,
@@ -145,6 +146,21 @@ describe("isAutoSettlementCandidate", () => {
     expect(
       ThreadSettlementService.isAutoSettlementCandidate(
         shell({ pendingBackgroundTasks: [{ taskId: "review", kind: "subagent" }] }),
+        NOW_MS,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not automatically settle an armed continuous recovery", () => {
+    expect(
+      ThreadSettlementService.isAutoSettlementCandidate(
+        shell({
+          continuousRecovery: {
+            requestId: CommandId.make("continue"),
+            nextAttemptAt: DateTime.formatIso(at(0)),
+            attempt: 0,
+          },
+        }),
         NOW_MS,
       ),
     ).toBe(false);

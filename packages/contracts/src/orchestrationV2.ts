@@ -353,6 +353,14 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 );
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
+/** Thread-owned intent that remains armed across provider runs and background wakes. */
+export const OrchestrationV2ContinuousRecovery = Schema.Struct({
+  requestId: CommandId,
+  nextAttemptAt: IsoDateTime,
+  attempt: NonNegativeInt,
+});
+export type OrchestrationV2ContinuousRecovery = typeof OrchestrationV2ContinuousRecovery.Type;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -395,6 +403,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
+  continuousRecovery: Schema.optional(Schema.NullOr(OrchestrationV2ContinuousRecovery)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -1853,6 +1862,9 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   snoozedUntil: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
+  continuousRecovery: Schema.optional(Schema.NullOr(OrchestrationV2ContinuousRecovery)),
+  /** Omitted by servers that predate thread pinning. */
+
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -2678,6 +2690,7 @@ export const OrchestrationV2Command = Schema.Union([
     /** Reject unless no message or run has landed on this thread. */
     expectedEmpty: Schema.optional(Schema.Boolean),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
+    continuousRecovery: Schema.optional(Schema.Boolean),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   }),
@@ -2987,6 +3000,20 @@ export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
  * send them.
  */
 const OrchestrationV2InternalCommand = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("thread.continuation.check"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    requestId: CommandId,
+    attempt: NonNegativeInt,
+    hasRunningConsole: Schema.Boolean,
+  }),
+  /**
+   * Records what a pull request watch saw, and wakes the agent in the same transaction when
+   * `wake` is set. Rejected once the watch started at `startedAt` has ended, and a wake is
+   * rejected on a settled or archived thread, so a read that raced either changes nothing.
+   */
+
   Schema.Struct({
     type: Schema.Literal("thread.pull-request-watch.sync"),
     commandId: CommandId,

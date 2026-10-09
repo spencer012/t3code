@@ -73,6 +73,13 @@ function metadataCommand(input: {
   readonly update: ThreadMetadataMcpUpdateInput;
 }): Extract<OrchestrationV2Command, { readonly type: "thread.metadata.update" }> {
   switch (input.update.action) {
+    case "continuous_recovery":
+      return {
+        type: "thread.metadata.update",
+        commandId: input.commandId,
+        threadId: input.threadId,
+        continuousRecovery: input.update.enabled!,
+      };
     case "rename":
       return {
         type: "thread.metadata.update",
@@ -131,6 +138,7 @@ function resultFromThread(input: {
           },
     linkedPullRequest: input.thread.linkedPullRequest ?? null,
     updatedAt: DateTime.formatIso(input.thread.updatedAt),
+    continuousRecoveryEnabled: input.thread.continuousRecovery != null,
   };
 }
 

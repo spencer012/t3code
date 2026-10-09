@@ -162,6 +162,9 @@ export function isAutoSettlementCandidate(
 ): boolean {
   if (thread.archivedAt !== null || thread.settledOverride !== null) return false;
   if (thread.pinnedAt != null || thread.autoSettleDisabledAt != null) return false;
+  if (thread.continuousRecovery != null) return false;
+  // Blocked-on-you work must never park behind a settled override.
+
   if (thread.pendingRuntimeRequest !== null) return false;
   if (thread.activityRunStatus != null) return false;
   if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return false;

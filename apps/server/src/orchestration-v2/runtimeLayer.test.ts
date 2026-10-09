@@ -6383,3 +6383,585 @@ it.layer(layerQueueResumeDisabledInstanceTest)(
     );
   },
 );
+
+it.layer(layerTest)("continuous usage-limit recovery", (it) => {
+  const seed = Effect.fn("seedContinuousRecovery")(function* (
+    suffix: string,
+    deadline: "known" | "missing" | "expired" = "known",
+  ) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const sink = yield* EventSink.EventSinkV2;
+    const threadId = ThreadId.make("continuous:" + suffix);
+    const projectId = ProjectId.make("continuous:project:" + suffix);
+    const now = yield* DateTime.now;
+    yield* seedProject({
+      projectId,
+      title: "Continuous recovery",
+      workspaceRoot: process.cwd(),
+      defaultModelSelection: modelSelection,
+      createdAt: DateTime.formatIso(now),
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("continuous:create:" + suffix),
+      threadId,
+      projectId,
+      title: "Continuous recovery",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("continuous:initial:" + suffix),
+      threadId,
+      messageId: MessageId.make("continuous:initial:" + suffix),
+      text: "Finish the task.",
+      attachments: [],
+      dispatchMode: { type: "defer_start" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const initial = yield* orchestrator.getThreadProjection(threadId);
+    const run = initial.runs[0]!;
+    const resetAt =
+      deadline === "missing"
+        ? null
+        : DateTime.formatIso(DateTime.add(now, { minutes: deadline === "expired" ? -1 : 1 }));
+    yield* sink.write({
+      events: [
+        ...initial.turnItems
+          .filter(
+            (item) => item.type === "command_execution" && item.input === "Preparing workspace",
+          )
+          .map((item) => ({
+            id: EventId.make("continuous:preparation:" + suffix + ":" + item.id),
+            type: "turn-item.updated" as const,
+            threadId,
+            occurredAt: now,
+            payload: { ...item, status: "failed" as const, completedAt: now, updatedAt: now },
+          })),
+        {
+          id: EventId.make("continuous:limited:" + suffix),
+          type: "run.updated",
+          threadId,
+          occurredAt: now,
+          payload: { ...run, status: "failed", startedAt: now, completedAt: now },
+        },
+        {
+          id: EventId.make("continuous:failure:" + suffix),
+          type: "turn-item.updated",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: TurnItemId.make("continuous:failure:" + suffix),
+            type: "error",
+            threadId,
+            runId: run.id,
+            nodeId: run.rootNodeId!,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 2,
+            status: "failed",
+            title: "Usage limit reached",
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            failure: {
+              class: "usage_limit",
+              message: "Limit reached.",
+              code: null,
+              retryable: true,
+              resetAt,
+            },
+          },
+        },
+      ],
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.metadata.update",
+      commandId: CommandId.make("continuous:arm:" + suffix),
+      threadId,
+      continuousRecovery: true,
+    });
+    return { threadId, run, resetAt };
+  });
+
+  const endLatest = Effect.fn("endContinuousRun")(function* (
+    threadId: ThreadId,
+    status: "completed" | "interrupted" | "failed",
+    suffix: string,
+  ) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const sink = yield* EventSink.EventSinkV2;
+    const projection = yield* orchestrator.getThreadProjection(threadId);
+    const run = projection.runs.findLast((run) => run.status !== "queued")!;
+    const now = yield* DateTime.now;
+    yield* sink.write({
+      events: [
+        ...projection.turnItems
+          .filter(
+            (item) =>
+              item.runId === run.id &&
+              item.type === "command_execution" &&
+              item.input === "Preparing workspace",
+          )
+          .map((item) => ({
+            id: EventId.make("continuous:preparation-end:" + suffix + ":" + item.id),
+            type: "turn-item.updated" as const,
+            threadId,
+            occurredAt: now,
+            payload: { ...item, status: "completed" as const, completedAt: now, updatedAt: now },
+          })),
+        {
+          id: EventId.make("continuous:end:" + suffix),
+          type: "run.updated",
+          threadId,
+          occurredAt: now,
+          payload: { ...run, status, startedAt: run.startedAt ?? now, completedAt: now },
+        },
+      ],
+    });
+  });
+
+  const check = Effect.fn("checkContinuousRecovery")(function* (
+    threadId: ThreadId,
+    suffix: string,
+    hasRunningConsole = false,
+  ) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const recovery = (yield* orchestrator.getThreadProjection(threadId)).thread.continuousRecovery!;
+    return yield* orchestrator.dispatch({
+      type: "thread.continuation.check",
+      commandId: CommandId.make("continuous:check:" + suffix),
+      threadId,
+      requestId: recovery.requestId,
+      attempt: recovery.attempt,
+      hasRunningConsole,
+    });
+  });
+
+  it.effect("survives a background wake replacing the limited run and deduplicates attempts", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const { threadId } = yield* seed("background-wake");
+      const armed = (yield* orchestrator.getThreadProjection(threadId)).thread.continuousRecovery!;
+      yield* check(threadId, "before-reset");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 1);
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("continuous:background-wake"),
+        threadId,
+        messageId: MessageId.make("continuous:background-wake"),
+        text: "A background agent reported progress.",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+      });
+      yield* endLatest(threadId, "interrupted", "background-wake");
+      yield* check(threadId, "wake-before-reset");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+      yield* TestClock.adjust("1 minute");
+      yield* check(threadId, "after-background-wake");
+      let current = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(current.runs, 3);
+      assert.equal(current.thread.continuousRecovery!.requestId, armed.requestId);
+      assert.equal(current.thread.continuousRecovery!.attempt, 1);
+      yield* orchestrator.dispatch({
+        type: "thread.continuation.check",
+        commandId: CommandId.make("continuous:duplicate-attempt"),
+        threadId,
+        requestId: armed.requestId,
+        attempt: 0,
+        hasRunningConsole: false,
+      });
+      current = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(current.runs, 3);
+      yield* endLatest(threadId, "failed", "second-failure");
+      yield* check(threadId, "backoff-not-due");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 3);
+      yield* TestClock.adjust("1 minute");
+      yield* check(threadId, "retry-after-backoff");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 4);
+    }),
+  );
+
+  it.effect.each(["console", "agent", "pending-result"] as const)(
+    "keeps a successful response armed while %s work remains, then finishes",
+    (kind) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const { threadId, run } = yield* seed("unfinished-" + kind);
+        yield* endLatest(threadId, "completed", "successful-" + kind);
+        const now = yield* DateTime.now;
+        const taskId = NodeId.make("continuous:task:" + kind);
+        if (kind !== "console") {
+          yield* sink.write({
+            events: [
+              {
+                id: EventId.make("continuous:task:" + kind),
+                type: "subagent.updated",
+                threadId,
+                runId: run.id,
+                nodeId: taskId,
+                occurredAt: now,
+                payload: {
+                  id: taskId,
+                  threadId,
+                  runId: run.id,
+                  parentNodeId: run.rootNodeId!,
+                  origin: "app_owned",
+                  createdBy: "agent",
+                  driver: ProviderDriverKind.make("codex"),
+                  providerInstanceId: modelSelection.instanceId,
+                  providerThreadId: null,
+                  childThreadId: null,
+                  nativeTaskRef: null,
+                  prompt: "Finish background work.",
+                  title: null,
+                  model: null,
+                  status: kind === "agent" ? "running" : "completed",
+                  result: null,
+                  startedAt: now,
+                  completedAt: kind === "agent" ? null : now,
+                  updatedAt: now,
+                  completionWake: "settled_only",
+                  completionDelivery: { state: "pending", observedByRunId: null },
+                },
+              },
+            ],
+          });
+        }
+        yield* TestClock.adjust("1 minute");
+        yield* check(threadId, "unfinished-" + kind, kind === "console");
+        let current = yield* orchestrator.getThreadProjection(threadId);
+        assert.isNotNull(current.thread.continuousRecovery);
+        assert.lengthOf(current.runs, 2);
+        yield* endLatest(threadId, "completed", "finished-" + kind);
+        if (kind !== "console") {
+          const task = current.subagents.find((task) => task.id === taskId)!;
+          yield* sink.write({
+            events: [
+              {
+                id: EventId.make("continuous:ack:" + kind),
+                type: "subagent.updated",
+                threadId,
+                runId: run.id,
+                nodeId: taskId,
+                occurredAt: yield* DateTime.now,
+                payload: {
+                  ...task,
+                  status: "completed",
+                  completedAt: now,
+                  completionDelivery: {
+                    state: "acknowledged",
+                    observedByRunId: current.runs.at(-1)!.id,
+                  },
+                },
+              },
+            ],
+          });
+        }
+        yield* check(threadId, "finished-" + kind);
+        current = yield* orchestrator.getThreadProjection(threadId);
+        assert.isNull(current.thread.continuousRecovery);
+        assert.lengthOf(current.runs, 2);
+      }),
+  );
+
+  it.effect.each(["cancel", "stop", "archive", "settle"] as const)(
+    "invalidates stale checks after explicit %s",
+    (action) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const { threadId } = yield* seed(action);
+        const recovery = (yield* orchestrator.getThreadProjection(threadId)).thread
+          .continuousRecovery!;
+        const commandId = CommandId.make("continuous:cancel:" + action);
+        if (action === "cancel")
+          yield* orchestrator.dispatch({
+            type: "thread.metadata.update",
+            commandId,
+            threadId,
+            continuousRecovery: false,
+          });
+        else
+          yield* orchestrator.dispatch({
+            type:
+              action === "stop"
+                ? "thread.stop"
+                : action === "archive"
+                  ? "thread.archive"
+                  : "thread.settle",
+            commandId,
+            threadId,
+          });
+        yield* TestClock.adjust("1 minute");
+        yield* orchestrator.dispatch({
+          type: "thread.continuation.check",
+          commandId: CommandId.make("continuous:stale:" + action),
+          threadId,
+          requestId: recovery.requestId,
+          attempt: 0,
+          hasRunningConsole: false,
+        });
+        const current = yield* orchestrator.getThreadProjection(threadId);
+        assert.isNull(current.thread.continuousRecovery);
+        assert.lengthOf(current.runs, 1);
+      }),
+  );
+
+  it.effect.each(["missing", "expired"] as const)(
+    "retries a %s reset deadline with bounded backoff",
+    (deadline) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const { threadId } = yield* seed(deadline, deadline);
+        yield* check(threadId, deadline + ":first");
+        assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+        yield* endLatest(threadId, "failed", deadline + ":failure");
+        yield* check(threadId, deadline + ":early");
+        assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+        yield* TestClock.adjust("1 minute");
+        yield* check(threadId, deadline + ":retry");
+        const current = yield* orchestrator.getThreadProjection(threadId);
+        assert.lengthOf(current.runs, 3);
+        assert.equal(current.thread.continuousRecovery!.attempt, 2);
+        const now = yield* DateTime.now;
+        assert.equal(
+          Date.parse(current.thread.continuousRecovery!.nextAttemptAt) -
+            DateTime.toEpochMillis(now),
+          120_000,
+        );
+      }),
+  );
+
+  it.effect("pauses for required input without clearing the continuation intent", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const { threadId, run } = yield* seed("required-input", "missing");
+      const now = yield* DateTime.now;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("continuous:request"),
+            type: "runtime-request.updated",
+            threadId,
+            nodeId: run.rootNodeId!,
+            occurredAt: now,
+            payload: {
+              id: RuntimeRequestId.make("continuous:request"),
+              nodeId: run.rootNodeId!,
+              providerTurnId: null,
+              nativeRequestRef: null,
+              kind: "user_input",
+              status: "pending",
+              responseCapability: { type: "message" },
+              createdAt: now,
+              resolvedAt: null,
+            },
+          },
+        ],
+      });
+      yield* check(threadId, "required-input");
+      const current = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(current.runs, 1);
+      assert.equal(current.thread.continuousRecovery!.attempt, 0);
+    }),
+  );
+
+  it.effect("drains a held queue after recovery before declaring completion", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const { threadId } = yield* seed("held-queue", "missing");
+      yield* check(threadId, "held-queue:recover");
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("continuous:queue"),
+        threadId,
+        messageId: MessageId.make("continuous:queue"),
+        text: "A saved follow-up.",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+      assert.equal(queued.status, "queued");
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("continuous:hold"),
+            type: "run.updated",
+            threadId,
+            occurredAt: yield* DateTime.now,
+            payload: { ...queued, queueHeld: true },
+          },
+        ],
+      });
+      yield* endLatest(threadId, "completed", "held-queue:recovered");
+      yield* check(threadId, "held-queue:drain");
+      let current = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(current.runs, 3);
+      assert.equal(current.runs.find((run) => run.id === queued.id)!.status, "starting");
+      assert.isFalse(current.runs.find((run) => run.id === queued.id)!.queueHeld);
+      assert.isNotNull(current.thread.continuousRecovery);
+      yield* endLatest(threadId, "completed", "held-queue:delivered");
+      yield* check(threadId, "held-queue:finished");
+      current = yield* orchestrator.getThreadProjection(threadId);
+      assert.isNull(current.thread.continuousRecovery);
+      assert.lengthOf(current.runs, 3);
+    }),
+  );
+
+  it.effect("persists backoff when provider validation rejects an automatic start", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const { threadId } = yield* seed("start-rejected", "missing");
+      const before = yield* orchestrator.getThreadProjection(threadId);
+      const unavailable = ProviderInstanceId.make("unavailable");
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("continuous:unavailable"),
+            type: "thread.metadata-updated",
+            threadId,
+            occurredAt: yield* DateTime.now,
+            payload: {
+              ...before.thread,
+              providerInstanceId: unavailable,
+              modelSelection: { ...before.thread.modelSelection, instanceId: unavailable },
+            },
+          },
+        ],
+      });
+      yield* check(threadId, "start-rejected");
+      let current = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(current.thread.continuousRecovery!.attempt, 1);
+      assert.lengthOf(current.runs, 1);
+      assert.lengthOf(current.messages, 1);
+      yield* check(threadId, "start-rejected:early");
+      current = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(current.thread.continuousRecovery!.attempt, 1);
+    }),
+  );
+
+  it.effect("counts commands on an older provider thread and ignores an idle native agent", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const { threadId, run } = yield* seed("provider-background", "missing");
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      const providerThread = projection.providerThreads[0]!;
+      const nextProviderThreadId = ProviderThreadId.make("continuous:new-provider-thread");
+      const now = yield* DateTime.now;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("continuous:old-provider-command"),
+            type: "provider-thread.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              ...providerThread,
+              pendingBackgroundTasks: [{ taskId: "dev-server", kind: "command" }],
+            },
+          },
+          {
+            id: EventId.make("continuous:next-provider"),
+            type: "provider-thread.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...providerThread, id: nextProviderThreadId, pendingBackgroundTasks: [] },
+          },
+          {
+            id: EventId.make("continuous:active-provider"),
+            type: "thread.metadata-updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...projection.thread, activeProviderThreadId: nextProviderThreadId },
+          },
+          {
+            id: EventId.make("continuous:idle-native-agent"),
+            type: "subagent.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: now,
+            payload: {
+              id: NodeId.make("continuous:idle-native-agent"),
+              threadId,
+              runId: run.id,
+              parentNodeId: run.rootNodeId!,
+              origin: "provider_native",
+              createdBy: "agent",
+              driver: ProviderDriverKind.make("codex"),
+              providerInstanceId: modelSelection.instanceId,
+              providerThreadId: providerThread.id,
+              childThreadId: null,
+              nativeTaskRef: null,
+              prompt: "A finished background task.",
+              title: null,
+              model: null,
+              status: "idle",
+              result: "Done.",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+            },
+          },
+        ],
+      });
+      yield* endLatest(threadId, "completed", "provider-background:completed");
+      yield* check(threadId, "provider-background:unfinished");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+      yield* endLatest(threadId, "completed", "provider-background:finished");
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("continuous:old-provider-command-ended"),
+            type: "provider-thread.updated",
+            threadId,
+            occurredAt: yield* DateTime.now,
+            payload: { ...providerThread, pendingBackgroundTasks: [] },
+          },
+        ],
+      });
+      yield* check(threadId, "provider-background:all-finished");
+      const finished = yield* orchestrator.getThreadProjection(threadId);
+      assert.isNull(finished.thread.continuousRecovery);
+      assert.lengthOf(finished.runs, 2);
+    }),
+  );
+
+  it.effect("reconstructs armed recovery from persisted events", () =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const { threadId } = yield* seed("persisted");
+      const armed = (yield* orchestrator.getThreadProjection(threadId)).thread.continuousRecovery;
+      assert.isNotNull(armed);
+      assert.include(
+        (yield* projections.getContinuousRecoveryThreads).map((thread) => thread.id),
+        threadId,
+      );
+      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      yield* maintenance.rebuild;
+      const shell = yield* projections.getThreadShell(threadId);
+      assert.deepEqual(shell!.continuousRecovery, armed);
+      const replayed = yield* orchestrator.getThreadProjection(threadId);
+      assert.deepEqual(replayed.thread.continuousRecovery, armed);
+    }),
+  );
+});
+

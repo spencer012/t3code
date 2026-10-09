@@ -63,9 +63,10 @@ export const ThreadMetadataMcpAction = Schema.Literals([
   "regenerate_title",
   "link_pull_request",
   "unlink_pull_request",
+  "continuous_recovery",
 ]).annotate({
   description:
-    "Metadata mutation: rename, regenerate_title, link_pull_request, or unlink_pull_request.",
+    "Metadata mutation: rename, regenerate_title, link_pull_request, unlink_pull_request, or continuous_recovery.",
 });
 export type ThreadMetadataMcpAction = typeof ThreadMetadataMcpAction.Type;
 
@@ -87,10 +88,23 @@ export const ThreadMetadataMcpUpdateInput = Schema.Struct({
   pullRequest: Schema.optional(ThreadMetadataMcpPullRequest).annotate({
     description: "Pull request to link. Required only when action is link_pull_request.",
   }),
+  enabled: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Required for continuous_recovery. Continue until the response, agents, and commands finish.",
+  }),
   clientRequestId: Schema.optional(ThreadMetadataClientRequestId),
 }).check(
   Schema.makeFilter((input) => {
+    if (input.action !== "continuous_recovery" && input.enabled !== undefined) {
+      return "enabled is only accepted for continuous_recovery.";
+    }
     switch (input.action) {
+      case "continuous_recovery":
+        return input.enabled !== undefined &&
+          input.title === undefined &&
+          input.pullRequest === undefined
+          ? true
+          : "continuous_recovery requires enabled and does not accept title or pullRequest.";
       case "rename":
         return input.title !== undefined && input.pullRequest === undefined
           ? true
@@ -118,5 +132,6 @@ export const ThreadMetadataMcpUpdateResult = Schema.Struct({
   titleRegeneration: Schema.NullOr(ThreadTitleRegeneration),
   linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
   updatedAt: IsoDateTime,
+  continuousRecoveryEnabled: Schema.optional(Schema.Boolean),
 });
 export type ThreadMetadataMcpUpdateResult = typeof ThreadMetadataMcpUpdateResult.Type;

@@ -1,9 +1,11 @@
 import { CommandId, MessageId, type OrchestrationV2Command } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 
@@ -74,16 +76,84 @@ const makeSweep = Effect.gen(function* () {
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const crypto = yield* Crypto.Crypto;
+  const terminals = yield* TerminalManager.TerminalManager;
+  const consoleSessions = new Map<string, Map<string, boolean>>();
+  const unsubscribe = yield* terminals.subscribeMetadata((event) =>
+    Effect.sync(() => {
+      if (event.type === "snapshot") consoleSessions.clear();
+      if (event.type === "remove") {
+        const sessions = consoleSessions.get(event.threadId);
+        sessions?.delete(event.terminalId);
+        if (sessions?.size === 0) consoleSessions.delete(event.threadId);
+        return;
+      }
+      for (const terminal of event.type === "snapshot" ? event.terminals : [event.terminal]) {
+        const sessions = consoleSessions.get(terminal.threadId) ?? new Map<string, boolean>();
+        sessions.set(
+          terminal.terminalId,
+          terminal.status === "starting" || terminal.hasRunningSubprocess,
+        );
+        consoleSessions.set(terminal.threadId, sessions);
+      }
+    }),
+  );
+  yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
   return Effect.fn("UsageLimitRecoveryWorker.sweep")(function* () {
     const preferences = yield* settings.getSettings;
     const now = yield* DateTime.now;
+    const continuousThreads = yield* projections.getContinuousRecoveryThreads;
+    const nowMs = DateTime.toEpochMillis(now);
+    for (const thread of continuousThreads) {
+      const recovery = thread.continuousRecovery;
+      if (recovery == null) continue;
+      const shell = yield* projections.getThreadShell(thread.id);
+      if (
+        shell === null ||
+        shell.pendingRuntimeRequest !== null ||
+        ["preparing", "starting", "running", "waiting"].includes(shell.status)
+      )
+        continue;
+      const hasRunningConsole = [...(consoleSessions.get(thread.id)?.values() ?? [])].some(Boolean);
+      const resetMs = Date.parse(shell.usageLimitResetAt ?? "");
+      const dueAt = Math.max(
+        Date.parse(recovery.nextAttemptAt),
+        Number.isFinite(resetMs) ? resetMs : 0,
+      );
+      if (
+        dueAt > nowMs &&
+        (shell.status !== "completed" ||
+          hasRunningConsole ||
+          (shell.pendingBackgroundTasks?.length ?? 0) > 0)
+      )
+        continue;
+      const uuid = yield* crypto.randomUUIDv4;
+      yield* threads
+        .dispatch({
+          type: "thread.continuation.check",
+          commandId: CommandId.make(`continuous-check:${recovery.requestId}:${uuid}`),
+          threadId: thread.id,
+          requestId: recovery.requestId,
+          attempt: recovery.attempt,
+          hasRunningConsole,
+        })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("orchestration-v2.continuous-recovery.dispatch-failed", {
+              threadId: thread.id,
+              cause,
+            }),
+          ),
+        );
+    }
     const candidates = yield* projections.getLimitRecoveryCandidates({
       now,
       autoResume: preferences.autoResumeLimitedThreads,
       snooze: preferences.snoozeLimitedThreads,
     });
-    const nowMs = DateTime.toEpochMillis(now);
+    const continuousIds = new Set(continuousThreads.map((thread) => thread.id));
     for (const thread of candidates) {
+      if (continuousIds.has(thread.id)) continue;
       const command = limitRecoveryCommand(
         thread,
         preferences.autoResumeLimitedThreads,

@@ -189,6 +189,7 @@ export type ProjectionSettlementCandidate = Pick<
   | "settledOverride"
   | "pinnedAt"
   | "autoSettleDisabledAt"
+  | "continuousRecovery"
   | "snoozedUntil"
   | "snoozedAt"
   | "latestRunId"
@@ -416,6 +417,12 @@ export interface ProjectionStoreV2Shape {
     readonly autoResume: boolean;
     readonly snooze: boolean;
   }) => Effect.Effect<ReadonlyArray<ProjectionLimitRecoveryCandidate>, ProjectionStoreV2Error>;
+  readonly getContinuousRecoveryThreads: Effect.Effect<
+    ReadonlyArray<OrchestrationV2AppThread>,
+    ProjectionStoreV2Error
+  >;
+  /** Every candidate, or only `threadId` when a sweep checks one thread. */
+
   readonly getSettlementCandidates: (
     threadId?: ThreadId,
   ) => Effect.Effect<ReadonlyArray<ProjectionSettlementCandidate>, ProjectionStoreV2Error>;
@@ -1580,6 +1587,7 @@ export function threadShellFromProjection(
     lastVisitedAt: projection.thread.lastVisitedAt,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
     limitRecovery: projection.thread.limitRecovery ?? null,
+    continuousRecovery: projection.thread.continuousRecovery ?? null,
     deletedAt: projection.thread.deletedAt,
   };
 }
@@ -1824,6 +1832,7 @@ function shellFromState(input: {
     lastVisitedAt: input.state.thread.lastVisitedAt,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
     limitRecovery: input.state.thread.limitRecovery ?? null,
+    continuousRecovery: input.state.thread.continuousRecovery ?? null,
     deletedAt: input.state.thread.deletedAt,
   };
 }
@@ -3544,6 +3553,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             : new ProjectionStoreReadError({ threadId, cause }),
         ),
       );
+
+    const getContinuousRecoveryThreads = Effect.gen(function* () {
+      const rows = yield* sql<{ readonly payload_json: string }>`
+        SELECT payload_json FROM orchestration_v2_projection_threads
+        WHERE deleted_at IS NULL
+          AND json_extract(payload_json, '$.continuousRecovery') IS NOT NULL
+          AND json_extract(payload_json, '$.archivedAt') IS NULL
+          AND json_extract(payload_json, '$.settledOverride') IS NOT 'settled'
+        ORDER BY thread_id
+      `;
+      return yield* Effect.forEach(rows, (row) => decodeThreadPayload(row.payload_json));
+    }).pipe(Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })));
 
     const getLimitRecoveryCandidates = Effect.fn("ProjectionStore.getLimitRecoveryCandidates")(
       function* (options: Parameters<ProjectionStoreV2Shape["getLimitRecoveryCandidates"]>[0]) {
@@ -5639,6 +5660,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               AND json_extract(t.payload_json, '$.settledOverride') IS NULL
               AND json_extract(t.payload_json, '$.pinnedAt') IS NULL
               AND json_extract(t.payload_json, '$.autoSettleDisabledAt') IS NULL
+              AND json_extract(t.payload_json, '$.continuousRecovery') IS NULL
               AND NOT EXISTS (
                 SELECT 1 FROM orchestration_v2_projection_runs active
                 WHERE active.thread_id = t.thread_id
@@ -6112,6 +6134,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getPlan,
       getProviderControlContext,
       getLimitRecoveryCandidates,
+      getContinuousRecoveryThreads,
       getRecoveryThreadIds,
       getUnreadableThreadIds,
       getThreadSnapshot,
@@ -6279,6 +6302,19 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               })),
           ),
         ),
+      getContinuousRecoveryThreads: Ref.get(replayState).pipe(
+        Effect.map((state) =>
+          [...state.projections.values()]
+            .map(({ thread }) => thread)
+            .filter(
+              (thread) =>
+                thread.continuousRecovery != null &&
+                thread.deletedAt === null &&
+                thread.archivedAt === null &&
+                thread.settledOverride !== "settled",
+            ),
+        ),
+      ),
       getLimitRecoveryCandidates: (options) =>
         Ref.get(replayState).pipe(
           Effect.map((state) =>

@@ -1,13 +1,14 @@
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope, type EnvironmentId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironmentScope } from "../../state/session";
 
 export function UsageLimitRecoveryCard({
   thread,
@@ -17,9 +18,24 @@ export function UsageLimitRecoveryCard({
   environmentId: EnvironmentId;
 }) {
   const updateMetadata = useAtomCommand(threadEnvironment.updateMetadata);
+  const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resetAt = thread.runtime?.usageLimitResetAt ?? null;
+  const nextAttemptAt = thread.continuousRecovery?.nextAttemptAt ?? null;
+  useEffect(() => {
+    const now = Math.max(nowMs, Date.now());
+    const deadlines = [Date.parse(resetAt ?? ""), Date.parse(nextAttemptAt ?? "")].filter(
+      (deadline) => Number.isFinite(deadline) && deadline > now,
+    );
+    if (deadlines.length === 0) return;
+    const timer = setTimeout(
+      () => setNowMs(Date.now()),
+      Math.min(Math.min(...deadlines) - now + 1, 2_147_483_647),
+    );
+    return () => clearTimeout(timer);
+  }, [resetAt, nextAttemptAt, nowMs]);
   const canSchedule =
     resetAt !== null &&
     Date.parse(resetAt) > Date.parse(thread.latestRun?.completedAt ?? thread.updatedAt);
@@ -46,12 +62,14 @@ export function UsageLimitRecoveryCard({
   const recovery = thread.limitRecovery;
   const scheduled =
     recovery?.runId === runId && recovery?.resetAt === resetAt && recovery?.autoResume;
-  if (
-    thread.runtime?.status !== "failed" ||
-    thread.runtime.lastErrorClass !== "usage_limit" ||
-    !runId
-  )
-    return null;
+  const continuous = thread.continuousRecovery != null;
+  const limited =
+    thread.runtime?.status === "failed" && thread.runtime.lastErrorClass === "usage_limit";
+  const awaitingRetry =
+    thread.continuousRecovery != null &&
+    ["failed", "interrupted", "cancelled"].includes(thread.runtime?.status ?? "") &&
+    Date.parse(thread.continuousRecovery.nextAttemptAt) > nowMs;
+  if (!limited && !continuous) return null;
   const snoozed =
     recovery?.snooze === true &&
     recovery.runId === runId &&
@@ -59,9 +77,10 @@ export function UsageLimitRecoveryCard({
     resetAt !== null &&
     thread.snoozedUntil !== null &&
     Date.parse(thread.snoozedUntil) === Date.parse(resetAt);
-  async function toggle(action: "resume" | "snooze") {
-    if (!resetAt || !runId || !canSchedule) return;
-    if (action === "snooze" && !snoozed && Date.parse(resetAt) <= Date.now()) {
+  async function toggle(action: "resume" | "snooze" | "continuous") {
+    if (!canOperate) return;
+    if (action !== "continuous" && (!resetAt || !runId || !canSchedule)) return;
+    if (action === "snooze" && !snoozed && Date.parse(resetAt!) <= Date.now()) {
       setError("The reset time has passed. Retry the thread manually.");
       return;
     }
@@ -71,11 +90,15 @@ export function UsageLimitRecoveryCard({
       environmentId,
       input: {
         threadId: thread.id,
-        limitRecovery: {
-          runId,
-          resetAt,
-          ...(action === "resume" ? { autoResume: !scheduled } : { snooze: !snoozed }),
-        },
+        ...(action === "continuous"
+          ? { continuousRecovery: !continuous }
+          : {
+              limitRecovery: {
+                runId: runId!,
+                resetAt: resetAt!,
+                ...(action === "resume" ? { autoResume: !scheduled } : { snooze: !snoozed }),
+              },
+            }),
       },
     });
     setPending(false);
@@ -87,15 +110,23 @@ export function UsageLimitRecoveryCard({
   return (
     <View className="mx-3 mb-2 gap-2 rounded-xl border border-warning-foreground/25 bg-screen p-3">
       <Text className="text-sm text-warning-foreground">
-        {resetAt
-          ? `Usage limit resets ${DateTime.toDateUtc(DateTime.makeUnsafe(resetAt)).toLocaleString()}.`
-          : "The provider did not report a reset time. Retry manually when your limit is available."}
+        {continuous
+          ? thread.hasPendingApprovals || thread.hasPendingUserInput
+            ? "Waiting for your response. Automatic continuation remains enabled."
+            : awaitingRetry
+              ? "Next continuation after " +
+                new Date(thread.continuousRecovery!.nextAttemptAt).toLocaleString() +
+                "."
+              : "Continuing until the response, agents, and console commands finish."
+          : resetAt
+            ? `Usage limit resets ${DateTime.toDateUtc(DateTime.makeUnsafe(resetAt)).toLocaleString()}.`
+            : "Reset time unavailable; continuous recovery will retry with backoff."}
       </Text>
-      {canSchedule ? (
+      {limited && canSchedule ? (
         <View className="flex-row flex-wrap gap-2">
           <Pressable
             accessibilityRole="button"
-            disabled={pending}
+            disabled={!canOperate || pending || continuous}
             onPress={() => void toggle("resume")}
             className="self-start rounded-lg bg-subtle px-3 py-2 active:opacity-70"
           >
@@ -105,7 +136,8 @@ export function UsageLimitRecoveryCard({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            disabled={pending || (!snoozed && resetPassed)}
+            disabled={!canOperate || pending || (!snoozed && resetPassed)}
+
             onPress={() => void toggle("snooze")}
             className="self-start rounded-lg bg-subtle px-3 py-2 active:opacity-70"
           >
@@ -115,6 +147,16 @@ export function UsageLimitRecoveryCard({
           </Pressable>
         </View>
       ) : null}
+      <Pressable
+        accessibilityRole="button"
+        disabled={!canOperate || pending}
+        onPress={() => void toggle("continuous")}
+        className="self-start rounded-lg bg-subtle px-3 py-2 active:opacity-70"
+      >
+        <Text className="text-sm text-foreground">
+          {pending ? "Saving..." : continuous ? "Stop continuing" : "Continue until finished"}
+        </Text>
+      </Pressable>
       {error ? (
         <Text accessibilityRole="alert" className="text-sm text-destructive">
           {error}

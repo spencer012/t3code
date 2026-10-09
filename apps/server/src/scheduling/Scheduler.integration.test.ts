@@ -26,6 +26,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTasks from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
 import * as Scheduler from "./Scheduler.ts";
 
 it.effect.each(["on time", "after restart"])(
@@ -105,6 +106,7 @@ it.effect.each(["on time", "after restart"])(
             ),
         }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getContinuousRecoveryThreads: Effect.succeed([]),
           getLimitRecoveryCandidates: () =>
             Ref.get(current).pipe(
               Effect.map((shell) => (shell.status === "failed" ? [shell] : [])),
@@ -114,6 +116,10 @@ it.effect.each(["on time", "after restart"])(
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
         }),
         Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(TerminalManager.TerminalManager)({
+          subscribeMetadata: (listener) =>
+            listener({ type: "snapshot", terminals: [] }).pipe(Effect.as(() => {})),
+        }),
       );
       const layerWorkers = Layer.mergeAll(
         ScheduledTasks.layer,

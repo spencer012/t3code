@@ -208,6 +208,14 @@ The environment must be running when the reset arrives; it resumes overdue
 continuations after a restart. Sending a new message, archiving, or settling the
 thread prevents a pending continuation from starting.
 
+Choose **Continue until finished** to keep automatic continuation enabled across
+interruptions and background agent messages. It waits for reported usage resets
+and retries with backoff when no reset time is available. It stops after a successful
+response with no unfinished agents, console commands, or queued results. An idle
+terminal does not keep it running; a dev server does. **Stop continuing** cancels the
+mode without interrupting current work. Stop, archive, and settle also cancel it.
+The environment must be running; the mode survives reconnects and server restarts.
+
 Choose **Snooze until reset** to hide the thread until its allowance returns.
 Snooze and auto-resume are independent: snooze alone wakes the thread without
 sending a message; enabling both wakes and continues it. **Wake now** cancels
