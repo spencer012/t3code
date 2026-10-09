@@ -209,7 +209,10 @@ continuations after a restart. Sending a new message, archiving, or settling the
 thread prevents a pending continuation from starting.
 
 Choose **Continue until finished** to keep automatic continuation enabled across
-interruptions and background agent messages. It waits for reported usage resets
+interruptions and background agent messages. You can also start or stop it from
+the thread-title or sidebar thread menu when the usage-limit banner is absent.
+While the parent is waiting on background agents or consoles, it stays enabled
+without repeatedly prompting the parent for status. It waits for reported usage resets
 and retries with backoff when no reset time is available. It stops after a successful
 response with no unfinished agents, console commands, or queued results. An idle
 terminal does not keep it running; a dev server does. **Stop continuing** cancels the

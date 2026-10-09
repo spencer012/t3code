@@ -102,12 +102,11 @@ all local or all upstream versions.
 Requested on 2026-10-08.
 
 Install the custom server in the server container without inspecting its active work.
-The Linux CLI archive built from `74b88c249e` replaces the nightly server.
+The custom Linux CLI archive replaces the nightly server.
 It uses the existing T3 home and connection configuration.
 
-The installed runtime is
-`continuous-usage-recovery-74b88c249e`.
-`local/current` selects it, and `bin/t3` points to that selection. Keep the
+Build directories live under the container's runtime cache.
+`local/current` selects the installed build, and `bin/t3` points to that selection. Keep the
 previous npm runtime available for rollback. The original launcher metadata and
 container startup script are backed up under `local/backups/before-74b88c249e`.
 
@@ -162,7 +161,8 @@ Corrected on 2026-10-09.
 
 Keep the thread-title and sidebar menus able to start or stop continuous recovery
 when the usage-limit banner is absent. This also lets the user re-enable a flag
-cleared by an older buggy build. Apply the same operate permission and existing-turn
+cleared by an older buggy build. The corrected server build `62296af749` is deployed
+in the server container, with the prior runtime retained for rollback. Apply the same operate permission and existing-turn
 guards across web, desktop, and mobile. Preserve explicit Stop/archive/settle
 cancellation and queue delivery. Do not re-enable previously cleared flags without
 a user action.
