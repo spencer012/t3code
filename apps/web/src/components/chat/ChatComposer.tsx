@@ -66,6 +66,10 @@ import { folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
+  AUTO_CONTINUE_COMMAND,
+  parseAutoContinueCommand,
+} from "@t3tools/client-runtime/continuous-recovery-command";
+import {
   memo,
   type ComponentProps,
   type ReactNode,
@@ -1527,6 +1531,8 @@ export interface ChatComposerProps {
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
   onUsageLimitsCommand?: (() => void) | undefined;
+  /** Executes a standalone app command without sending it to the provider. */
+  onAutoContinueCommand: (text: string) => Promise<boolean>;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
@@ -1904,7 +1910,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
     promptHistoryMessages,
-    isServerThread: _isServerThread,
+    isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
     projectSelectionRequired,
@@ -2319,13 +2325,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderEntry?.snapshot,
     selectedModel,
   );
-  const sendDisabledReason =
-    externalSendDisabledReason ??
-    (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
-    (activePendingProgress
-      ? attachmentBlockReason
-      : (attachmentBlockReason ??
-        (multipleModelSelections === null ? providerSendBlockReason : null)));
+  const isAutoContinueCommand =
+    !activePendingProgress &&
+    !isEditingQueuedMessage &&
+    !composerDraftHasUserContent({ ...composerDraft, prompt: "" }) &&
+    parseAutoContinueCommand(prompt) !== null;
+  const sendDisabledReason = isAutoContinueCommand
+    ? environmentUnavailable !== null
+      ? "Connect to the environment"
+      : !canOperateThread
+        ? "You do not have permission to change this thread"
+        : null
+    : (externalSendDisabledReason ??
+      (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
+      (activePendingProgress
+        ? attachmentBlockReason
+        : (attachmentBlockReason ??
+          (multipleModelSelections === null ? providerSendBlockReason : null))));
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
@@ -2661,6 +2677,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               },
             ] as const)
           : []),
+        ...(isServerThread && composerTrigger.rangeStart === 0
+          ? ([
+              {
+                id: "slash:auto-continue",
+                type: "slash-command",
+                command: AUTO_CONTINUE_COMMAND.name,
+                label: "/auto-continue",
+                description: AUTO_CONTINUE_COMMAND.description,
+              },
+            ] as const)
+          : []),
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const slashMenuSkills = getProviderSkillsForSlashMenu(
         selectedProviderSkills,
@@ -2690,7 +2717,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           (skill.scope ? `${skill.scope} skill` : ""),
       }));
       const visibleProviderSlashCommandItems = providerSlashCommandItems.filter(
-        (item) => item.command.name !== "compact" || compactSlashCommandAvailable,
+        (item) =>
+          item.command.name !== AUTO_CONTINUE_COMMAND.name &&
+          (item.command.name !== "compact" || compactSlashCommandAvailable),
       );
       const slashCommandItems = slashCommandItemsForPromptPosition(
         [...builtInSlashCommandItems, ...visibleProviderSlashCommandItems, ...skillItems],
@@ -2768,6 +2797,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     return [];
   })();
+
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -2911,15 +2941,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : null;
   const showResumeAction =
     canResume && !composerDraftHasUserContent(composerDraft) && !isEditingQueuedMessage;
-  const collapsedComposerPrimaryActionDisabled =
-    phase === "running" ||
-    isSendBusy ||
-    isSendDisabled ||
-    isConnecting ||
-    noProviderAvailable ||
-    projectSelectionRequired ||
-    environmentUnavailable !== null ||
-    (!composerSendState.hasSendableContent && !showResumeAction);
+  const collapsedComposerPrimaryActionDisabled = isAutoContinueCommand
+    ? isSendDisabled
+    : phase === "running" ||
+      isSendBusy ||
+      isSendDisabled ||
+      isConnecting ||
+      noProviderAvailable ||
+      projectSelectionRequired ||
+      environmentUnavailable !== null ||
+      (!composerSendState.hasSendableContent && !showResumeAction);
   const collapsedComposerPrimaryActionLabel = showResumeAction
     ? "Resume thread"
     : props.resumeCompactionTokens !== null && !props.keepFullHistory
@@ -3783,7 +3814,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return;
     }
     if (item.type === "slash-command") {
+        if (item.command === AUTO_CONTINUE_COMMAND.name) {
+          const applied = applyPromptReplacement(
+            trigger.rangeStart,
+            trigger.rangeEnd,
+            "/auto-continue ",
+            {
+              expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+            },
+          );
+          if (applied) setComposerHighlightedItemId(null);
+          return;
+        }
       if (item.command === "model") {
+
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
           focusEditorAfterReplace: false,
@@ -3947,11 +3991,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return showPlanFollowUpPrompt || composerSendState.hasSendableContent;
   };
 
+  const { onAutoContinueCommand } = props;
   const submitComposer = (
     event?: { preventDefault: () => void },
     dispatchMode?: ComposerDispatchMode,
     submissionIntent?: ComposerSubmissionIntent,
   ) => {
+      if (isAutoContinueCommand) {
+        event?.preventDefault();
+        const commandText = promptRef.current;
+        const targetKey = composerDraftTargetKey;
+        void onAutoContinueCommand(commandText).then((success) => {
+          if (
+            success &&
+            composerDraftTargetKeyRef.current === targetKey &&
+            promptRef.current === commandText
+          ) {
+            promptRef.current = "";
+            setComposerDraftPrompt(composerDraftTarget, "");
+            composerRef.current?.resetCursorState();
+          }
+        });
+        return;
+      }
     if (
       noProviderAvailable ||
       isSendDisabled ||
@@ -4023,6 +4085,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   };
   const handleSubmitMessageStable = useStableCallback(handleSubmitMessage);
   const submitCitationAndSend = () => {
+
     submitComposer(
       undefined,
       resolveComposerDispatchMode({
@@ -7251,7 +7314,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     reserveContextWindowMeter={reserveContextWindowMeter}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
-                    isRunning={phase === "running"}
+                    isRunning={phase === "running" && !isAutoContinueCommand}
                     canInterrupt={canInterrupt}
                     followUpBehavior={settings.followUpBehavior}
                     canSteer={!isCompacting}
@@ -7274,13 +7337,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                     }
                     promptHasText={prompt.trim().length > 0}
-                    isSendBusy={isSendBusy}
+                    isSendBusy={isSendBusy && !isAutoContinueCommand}
                     sendDisabledReason={sendDisabledReason}
                     isConnecting={isConnecting}
                     isEnvironmentUnavailable={
                       environmentUnavailable !== null ||
-                      noProviderAvailable ||
-                      projectSelectionRequired
+                      (!isAutoContinueCommand && (noProviderAvailable || projectSelectionRequired))
                     }
                     isPreparingWorktree={isPreparingWorktree}
                     hasSendableContent={composerSendState.hasSendableContent}

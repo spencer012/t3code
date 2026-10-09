@@ -211,6 +211,13 @@ thread prevents a pending continuation from starting.
 Choose **Continue until finished** to keep automatic continuation enabled across
 interruptions and background agent messages. You can also start or stop it from
 the thread-title or sidebar thread menu when the usage-limit banner is absent.
+In an existing thread, send `/auto-continue` to toggle the mode, or use
+`/auto-continue on`, `/auto-continue off`, and `/auto-continue status`.
+The command works during a running turn or a usage-limit stop and does not send
+a message to the agent. Send it by itself without attachments. You can also
+search for **Continue until finished** or **Stop continuing** in the command
+palette with `Cmd/Ctrl+K`. The mode applies to the current task and stops when
+that work finishes.
 While the parent is waiting on background agents or consoles, it stays enabled
 without repeatedly prompting the parent for status. It waits for reported usage resets
 and retries with backoff when no reset time is available. It stops after a successful

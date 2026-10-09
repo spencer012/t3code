@@ -35,6 +35,44 @@ import {
 } from "./use-composer-command-menu";
 
 describe("mobile slash commands", () => {
+  it("offers automatic continuation in an existing thread without provider commands or a limit", () => {
+    const items = buildComposerSlashCommandItems({
+      query: "auto-continue",
+      atMessageStart: true,
+      hasThread: true,
+      allowInteractionMode: false,
+      selectedProviderStatus: null,
+    });
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    expect(
+      resolveComposerCommandSelection({
+        draftMessage: "/auto",
+        trigger: { rangeStart: 0, rangeEnd: 5 },
+        item,
+        allowInteractionMode: false,
+      }),
+    ).toEqual({ text: "/auto-continue ", cursor: 15, interactionMode: null });
+  });
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])(
+    "does not offer automatic continuation for hasThread=%s, atMessageStart=%s",
+    (hasThread, atMessageStart) => {
+      expect(
+        buildComposerSlashCommandItems({
+          query: "auto-continue",
+          atMessageStart,
+          hasThread,
+          allowInteractionMode: false,
+          selectedProviderStatus: null,
+        }),
+      ).toEqual([]);
+    },
+  );
+
   const antigravity = {
     driver: ProviderDriverKind.make("antigravity"),
     showInteractionModeToggle: false,

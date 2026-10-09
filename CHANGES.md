@@ -166,3 +166,21 @@ in the server container, with the prior runtime retained for rollback. Apply the
 guards across web, desktop, and mobile. Preserve explicit Stop/archive/settle
 cancellation and queue delivery. Do not re-enable previously cleared flags without
 a user action.
+
+## Command to toggle automatic continuation
+
+Requested on 2026-10-09.
+
+Keep `/auto-continue` available in an existing thread without requiring a
+usage-limit prompt. A bare command toggles the mode; `on` and `off` set it
+explicitly, and `status` reports it. Web, desktop, and mobile handle the
+standalone command directly through thread metadata, without prompting,
+queuing a turn, steering the agent, or spending model usage. Keep the matching
+command-palette actions reachable with the existing palette shortcut.
+
+Preserve retry deadlines when the requested mode is already set. Invalid
+arguments must show usage guidance instead of reaching a provider. Failed
+updates retain the draft and never claim success. Keep operate permissions,
+existing-turn validation, and old-server compatibility checks. Disabling the
+mode leaves current agents and consoles running. This remains a mode for the
+current task, with the existing completion and explicit cancellation rules.

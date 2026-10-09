@@ -5,9 +5,18 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
+import {
+  parseAutoContinueCommand,
+  runAutoContinueCommand,
+} from "@t3tools/client-runtime/continuous-recovery-command";
+import * as Cause from "effect/Cause";
+import { threadEnvironment } from "../../state/threads";
+import { readEnvironmentScope } from "../../state/session";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { pastedTextDisposition, replaceTextSelection } from "@t3tools/client-runtime/text-paste";
 import {
+  AuthOrchestrationOperateScope,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type ChatAttachment,
@@ -351,6 +360,13 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const composerDraftKey = props.draftKey ?? composerOwnerKey;
   const { text: draftMessage, attachments: draftAttachments } = useComposerDraft(composerDraftKey);
   const queuedEdit = props.queuedEdit ?? null;
+  const autoContinueAction =
+    queuedEdit === null && props.draftAttachments.length === 0
+      ? parseAutoContinueCommand(props.draftMessage)
+      : null;
+  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
   const hasContent =
     draftMessage.trim().length > 0 ||
     draftAttachments.length > 0 ||
@@ -369,13 +385,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     });
   const sendPresentation = resolveComposerSendPresentation({
     editingQueuedMessage: queuedEdit !== null,
-    running: props.activeThreadBusy,
+    running: autoContinueAction === null && props.activeThreadBusy,
     canSteer: props.canSteerActiveTurn,
     followUpBehavior: props.followUpBehavior,
     deliveryDeferred:
-      props.connectionState !== "connected" || props.queueCount > 0 || attachmentsUploading,
+      autoContinueAction === null &&
+      (props.connectionState !== "connected" || props.queueCount > 0 || attachmentsUploading),
   });
-  const sendLabel = sendPresentation.label;
+  const sendLabel = autoContinueAction === null ? sendPresentation.label : "Run command";
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const modelUnavailable =
@@ -477,17 +494,24 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   });
   const contextImports = useAtomValue(composerContextImportsAtom);
   const sendBlockedReason =
-    (queuedEdit?.saving === true ? "Saving…" : null) ??
-    props.sendBlockedReason ??
-    (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
-    attachmentBlockReason;
+    autoContinueAction !== null
+      ? null
+      : ((queuedEdit?.saving === true ? "Saving…" : null) ??
+        props.sendBlockedReason ??
+        (pendingPastedTextAttachmentCount > 0 ? "Attaching pasted text" : null) ??
+        attachmentBlockReason);
   const canSend =
-    (props.canOperateThread || props.connectionState !== "connected") &&
-    hasContent &&
-    !contextImports[composerDraftKey] &&
-    !voiceInput.blocksSubmission &&
-    sendBlockedReason === null &&
-    !modelUnavailable;
+    autoContinueAction !== null
+      ? props.canOperateThread &&
+        props.connectionState === "connected" &&
+        !contextImports[composerDraftKey] &&
+        !voiceInput.blocksSubmission
+      : (props.canOperateThread || props.connectionState !== "connected") &&
+        hasContent &&
+        !contextImports[composerDraftKey] &&
+        !voiceInput.blocksSubmission &&
+        sendBlockedReason === null &&
+        !modelUnavailable;
 
   useEffect(() => {
     onExpandedChange?.(isExpanded);
@@ -537,6 +561,45 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   };
   const handleSend = async (followUp?: ActiveTurnComposerAction) => {
     if (voiceInput.blocksSubmission || pendingPastedTextAttachmentCountRef.current > 0) return;
+      if (autoContinueAction !== null) {
+        const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+        if (inFlightThreadIdsRef.current.has(threadKey)) return;
+        inFlightThreadIdsRef.current.add(threadKey);
+        try {
+          if (props.connectionState !== "connected")
+            throw new Error("Connect to the environment to change automatic continuation.");
+          if (
+            autoContinueAction !== "status" &&
+            !readEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope)
+          ) {
+            throw new Error("You do not have permission to change this thread.");
+          }
+          if (props.selectedThread.continuousRecovery === undefined)
+            throw new Error("Update this environment's server to use automatic continuation.");
+          const title = await runAutoContinueCommand(
+            autoContinueAction,
+            props.selectedThread.continuousRecovery !== null,
+            async (enabled) => {
+              const result = await updateThreadMetadata({
+                environmentId: props.environmentId,
+                input: { threadId: props.selectedThread.id, continuousRecovery: enabled },
+              });
+              if (result._tag === "Failure") throw Cause.squash(result.cause);
+            },
+          );
+          if (getComposerDraftSnapshot(composerDraftKey).text === props.draftMessage)
+            setComposerDraftText(composerDraftKey, "");
+          Dialog.alert(title);
+        } catch (error) {
+          Dialog.alert(
+            "Could not change automatic continuation",
+            error instanceof Error ? error.message : "An error occurred.",
+          );
+        } finally {
+          inFlightThreadIdsRef.current.delete(threadKey);
+        }
+        return;
+      }
     if (usageLimitsOffered && isUsageLimitsCommand(draftMessage) && draftAttachments.length === 0) {
       if (openUsageLimits()) onChangeDraftMessage("");
       return;
@@ -560,6 +623,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       projectTitle: props.environmentLabel ?? "T3 Code",
     });
   };
+
 
   const lockedProviderInstanceId = props.canSwitchProvider
     ? undefined

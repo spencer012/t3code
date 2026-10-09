@@ -1,5 +1,7 @@
 import { Toolbar } from "../../components/ui/Toolbar";
 import * as Dialog from "../../components/ui/Dialog";
+import { parseAutoContinueCommand } from "@t3tools/client-runtime/continuous-recovery-command";
+
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
@@ -1215,6 +1217,10 @@ export function NewTaskDraftScreen(props: {
         selectedProject.id,
       );
       Dialog.alert(title, detail);
+      return;
+    }
+    if (draft.attachments.length === 0 && parseAutoContinueCommand(initialMessageText) !== null) {
+      Alert.alert("Automatic continuation", "Send /auto-continue inside an existing thread.");
       return;
     }
     // T3's own limits command is answered by the thread composer; a new task would

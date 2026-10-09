@@ -1,4 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
+import { useThreadListActions } from "../home/useThreadListActions";
+import { readEnvironmentScope } from "../../state/session";
+import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { THREAD_JUMP_KEYBINDING_COMMANDS } from "@t3tools/contracts";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
@@ -62,6 +65,7 @@ const ACTION_ICONS: Record<string, AppSymbolName> = {
   terminal: "terminal",
   review: PullRequestGlyph.pullRequest,
   copyThreadReference: "link",
+  autoContinue: "arrow.clockwise",
 };
 
 function itemIcon(item: CommandPaletteItem): AppSymbolName {
@@ -146,6 +150,7 @@ export function CommandPalette(props: {
   const threads = useThreadShells();
   const activeThreadRef = useMemo(() => parseActiveThreadPath(props.pathname), [props.pathname]);
   const activeThread = useThreadShell(activeThreadRef);
+  const { setContinuousRecovery } = useThreadListActions();
   const environments = useWorkspaceEnvironments();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const [query, setQuery] = useState("");
@@ -284,6 +289,33 @@ export function CommandPalette(props: {
           }),
       });
     }
+    if (
+      activeThread &&
+      activeThread.continuousRecovery !== undefined &&
+      readEnvironmentScope(activeThread.environmentId, AuthOrchestrationOperateScope) &&
+      (activeThread.continuousRecovery !== null ||
+        (activeThread.latestRun !== null &&
+          activeThread.archivedAt === null &&
+          activeThread.settledOverride !== "settled"))
+    ) {
+      actions.push({
+        key: "autoContinue",
+        kind: "action",
+        title:
+          activeThread.continuousRecovery !== null ? "Stop continuing" : "Continue until finished",
+        searchTerms: [
+          "auto-continue",
+          "automatic",
+          "continuous",
+          "recovery",
+          "usage limit",
+          "resume",
+        ],
+        run: () => {
+          void setContinuousRecovery(activeThread, activeThread.continuousRecovery === null);
+        },
+      });
+    }
     if (activeThreadRef) {
       const threadActions = [
         ["files", "Go to file", ["open", "files", "browse", "search"]],
@@ -350,6 +382,7 @@ export function CommandPalette(props: {
     projects,
     runCommand,
     savedConnectionsById,
+    setContinuousRecovery,
     selectThread,
     threads,
   ]);

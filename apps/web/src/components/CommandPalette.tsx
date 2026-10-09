@@ -1,5 +1,7 @@
 "use client";
 
+import { runAutoContinueCommand } from "@t3tools/client-runtime/continuous-recovery-command";
+
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -733,6 +735,9 @@ function OpenCommandPaletteDialog(props: {
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
   });
+  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
   const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
     reportFailure: false,
   });
@@ -979,6 +984,10 @@ function OpenCommandPaletteDialog(props: {
   const { projectCwdById, projectByKey, projectTitleById } = useProjectLookups();
 
   const activeThreadId = activeThread?.id;
+  const canChangeContinuousRecovery = useEnvironmentScope(
+    activeThread?.environmentId ?? null,
+    AuthOrchestrationOperateScope,
+  );
   const supportsThreadFind =
     environments.find((environment) => environment.environmentId === activeThread?.environmentId)
       ?.serverConfig?.threadFind === true;
@@ -1739,6 +1748,40 @@ function OpenCommandPaletteDialog(props: {
 
   if (activeThread !== null) {
     const thread = activeThread;
+    if (thread.continuousRecovery !== undefined) {
+      const enabled = thread.continuousRecovery !== null;
+      actionItems.push({
+        kind: "action",
+        value: "action:auto-continue",
+        searchTerms: [
+          "auto-continue",
+          "automatic",
+          "continuous",
+          "recovery",
+          "usage limit",
+          "resume",
+        ],
+        title: enabled ? "Stop continuing" : "Continue until finished",
+        icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
+        disabled:
+          !canChangeContinuousRecovery ||
+          (!enabled &&
+            (thread.latestRun === null ||
+              thread.archivedAt !== null ||
+              thread.settledOverride === "settled")),
+        run: async () => {
+          const title = await runAutoContinueCommand("toggle", enabled, async (next) => {
+            const result = await updateThreadMetadata({
+              environmentId: thread.environmentId,
+              input: { threadId: thread.id, continuousRecovery: next },
+            });
+            if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+          });
+          toastManager.add({ type: "success", title });
+        },
+      });
+    }
+
     actionItems.push({
       kind: "action",
       value: "action:restart-agent-session",

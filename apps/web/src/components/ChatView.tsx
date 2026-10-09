@@ -53,6 +53,11 @@ import {
   TYPE_TO_FOCUS_EDITABLE_SELECTOR,
   TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR,
 } from "./chat/composerFocusRedirect";
+import {
+  parseAutoContinueCommand,
+  runAutoContinueCommand,
+} from "@t3tools/client-runtime/continuous-recovery-command";
+
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
 import {
@@ -5349,6 +5354,43 @@ export default function ChatView(props: ChatViewProps) {
     });
     return item ? [item] : [];
   });
+  const autoContinueInFlightRef = useRef(new Set<string>());
+  const onAutoContinueCommand = async (text: string) => {
+    const action = parseAutoContinueCommand(text);
+    if (action === null || autoContinueInFlightRef.current.has(routeThreadKey)) return false;
+    autoContinueInFlightRef.current.add(routeThreadKey);
+    try {
+      if (!activeThreadShell || !isServerThread)
+        throw new Error("Open an existing thread to change automatic continuation.");
+      if (
+        action !== "status" &&
+        !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
+      ) {
+        throw new Error("You do not have permission to change this thread.");
+      }
+      if (activeEnvironmentUnavailable)
+        throw new Error("Connect to the environment to change automatic continuation.");
+      if (activeThreadShell.continuousRecovery === undefined)
+        throw new Error("Update this environment's server to use automatic continuation.");
+      const title = await runAutoContinueCommand(
+        action,
+        activeThreadShell.continuousRecovery !== null,
+        changeContinuousRecovery,
+      );
+      toastManager.add({ type: "success", title });
+      return true;
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Could not change automatic continuation",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+      return false;
+    } finally {
+      autoContinueInFlightRef.current.delete(routeThreadKey);
+    }
+  };
+
   const changeContinuousRecovery = async (enabled: boolean) => {
     if (!activeThreadShell) return;
     const result = await updateThreadMetadata({
@@ -8252,6 +8294,8 @@ export default function ChatView(props: ChatViewProps) {
                               resumeCompactionTokens={resumeCompactionTokens}
                               keepFullHistory={keepFullHistory}
                               onToggleKeepFullHistory={toggleKeepFullHistoryStable}
+                              onAutoContinueCommand={onAutoContinueCommand}
+
                               onUsageLimitsCommand={
                                 usageLimitsOffered &&
                                 usageLimitsKey !== null &&

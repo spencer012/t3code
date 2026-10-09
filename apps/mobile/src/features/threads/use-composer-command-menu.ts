@@ -24,6 +24,7 @@ import {
   setComposerDraftContext,
 } from "../../state/use-composer-drafts";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
+import { AUTO_CONTINUE_COMMAND } from "@t3tools/client-runtime/continuous-recovery-command";
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -98,14 +99,28 @@ export function buildComposerSlashCommandItems(input: {
       description: "Switch to default mode",
     },
   ] satisfies ComposerCommandItem[];
+  if (input.hasThread && input.atMessageStart) {
+    builtIn.push({
+      id: "cmd:auto-continue",
+      type: "slash-command",
+      command: AUTO_CONTINUE_COMMAND.name,
+      label: "/auto-continue",
+      description: AUTO_CONTINUE_COMMAND.description,
+    });
+  }
   const items: ComposerCommandItem[] = builtIn.filter(
-    (item) => item.command.includes(query) && (item.command === "model" || allowInteractionMode),
+    (item) =>
+      item.command.includes(query) &&
+      (item.command === "model" ||
+        item.command === AUTO_CONTINUE_COMMAND.name ||
+        allowInteractionMode),
   );
 
   // Providers expand commands only at the start of a message. T3 commands
   // change local state and do not have this restriction.
   if (!input.atMessageStart) return items;
   for (const command of input.selectedProviderStatus?.slashCommands ?? []) {
+    if (command.name === AUTO_CONTINUE_COMMAND.name) continue;
     if (!command.name.toLowerCase().includes(query)) continue;
     if (command.name === "compact" && !input.hasCompactableConversation) continue;
     if (command.name === USAGE_LIMITS_COMMAND.name && input.offersUsageLimits && !input.hasThread) {
