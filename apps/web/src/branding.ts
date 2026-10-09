@@ -1,5 +1,5 @@
 import type { DesktopAppBranding } from "@t3tools/contracts";
-import { formatAppDisplayName } from "./branding.logic";
+import { CUSTOM_APP_DISPLAY_NAME } from "@t3tools/shared/customBuild";
 
 function readInjectedDesktopAppBranding(): DesktopAppBranding | null {
   if (typeof window === "undefined") {
@@ -21,8 +21,7 @@ export const APP_STAGE_LABEL =
   injectedDesktopAppBranding?.stageLabel ??
   HOSTED_APP_CHANNEL_LABEL ??
   (import.meta.env.DEV ? "Dev" : "Beta");
-export const APP_DISPLAY_NAME =
-  injectedDesktopAppBranding?.displayName ??
-  formatAppDisplayName({ baseName: APP_BASE_NAME, stageLabel: APP_STAGE_LABEL });
+export const APP_DISPLAY_NAME = injectedDesktopAppBranding?.displayName ?? CUSTOM_APP_DISPLAY_NAME;
+
 export const APP_VERSION = import.meta.env.APP_VERSION || "0.0.0";
 export const DESKTOP_DOWNLOAD_URL = "https://t3.codes/download";
