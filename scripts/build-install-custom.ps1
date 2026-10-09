@@ -113,6 +113,10 @@ try {
     if (-not $BuildOnly) {
         Write-Host 'Quit T3 Code fully before installing the new client.' -ForegroundColor Yellow
         Read-Host 'Press Enter after quitting T3 Code to start the installer' | Out-Null
+        $clientNames = @('T3 Code (Alpha)','T3 Code (Nightly)','T3 Code (Custom)','T3 Code','t3code')
+        while (@(Get-Process -Name $clientNames -ErrorAction SilentlyContinue).Count -gt 0) {
+            Read-Host 'T3 Code is still running. Use File > Quit, then press Enter' | Out-Null
+        }
         $installerTemp = Join-Path $outputRoot 'installer-temp'
         New-Item -ItemType Directory -Path $installerTemp -Force | Out-Null
         $env:TEMP = $installerTemp
