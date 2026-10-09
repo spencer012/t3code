@@ -267,9 +267,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopUpdateChannel("0.0.17"), "latest");
   });
 
-  it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.1.0"), "T3 Code (Beta)");
-    assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
+  it("keeps the Custom product name across release channels", () => {
+    assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Custom)");
+    assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Custom)");
+
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
@@ -698,7 +699,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/*.map",
       ]);
       assert.deepStrictEqual(mac.dmg, {
-        title: "T3 Code (Beta) 1.2.3 Installer",
+        title: "T3 Code (Custom) 1.2.3 Installer",
+
         background: "dmg/dmg-background-latest.png",
         window: { width: 640, height: 432 },
         contents: [
@@ -1239,7 +1241,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
                 Effect.gen(function* () {
                   assert.equal(command._tag, "StandardCommand");
                   if (command._tag !== "StandardCommand") return mockProcess(1);
-                  assert.equal(command.command, "cargo");
+                  assert.match(command.command, /(?:^|[\\/])cargo(?:\.exe)?$/i);
                   assert.deepEqual(command.args, [
                     "build",
                     "--locked",
@@ -1267,7 +1269,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
               `${backend}-capture/t3-${backend}-snap-shot`,
             );
             assert.equal(yield* fs.readFileString(installed), `helper-${arch}`);
-            assert.equal((yield* fs.stat(installed)).mode & 0o777, 0o755);
+            // Windows does not represent POSIX executable permission bits.
+            if ((yield* HostProcessPlatform) !== "win32") {
+              assert.equal((yield* fs.stat(installed)).mode & 0o777, 0o755);
+            }
             if (backend === "hyprland")
               assert.equal(
                 yield* fs.readFileString(
@@ -1654,7 +1659,12 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         });
 
         assert.isFalse(
-          commands.some((command) => command.options.env?.ELECTRON_RUN_AS_NODE === "1"),
+          commands.some(
+            (command) =>
+              command.command ===
+                NodePath.join(fixture.stageDistDir, "win-unpacked", fixture.appExecutableName) &&
+              command.options.env?.ELECTRON_RUN_AS_NODE === "1",
+          ),
         );
         assert.isTrue(
           commands.some(

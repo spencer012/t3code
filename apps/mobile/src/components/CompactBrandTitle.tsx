@@ -1,5 +1,5 @@
+import { CUSTOM_APP_DISPLAY_NAME } from "@t3tools/shared/customBuild";
 import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
-import Constants from "expo-constants";
 import type { NativeStackNavigationOptions } from "@react-navigation/native-stack";
 import { useState } from "react";
 import { Platform, View } from "react-native";
@@ -7,8 +7,8 @@ import { Platform, View } from "react-native";
 import { AppText as Text } from "./ui/AppText";
 import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
-import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
+
 
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
@@ -26,7 +26,6 @@ export function CompactBrandTitle(
     readonly fit?: boolean;
   } = {},
 ) {
-  const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   const titleOffset = brandTitleOffset();
   const { scale } = useAndroidControlSizing();
   const [availableWidth, setAvailableWidth] = useState<number | null>(null);
@@ -41,7 +40,8 @@ export function CompactBrandTitle(
         props.fit && showStage ? (event) => setFullWidth(event.nativeEvent.layout.width) : undefined
       }
       aria-level={1}
-      accessibilityLabel={props.accessibilityLabel ?? "T3 Code, Threads"}
+      accessibilityLabel={props.accessibilityLabel ?? CUSTOM_APP_DISPLAY_NAME + ", Threads"}
+
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"
@@ -73,10 +73,11 @@ export function CompactBrandTitle(
             className="font-t3-bold text-foreground-muted uppercase"
             style={{ fontSize: 9 * scale, letterSpacing: 0.9 * scale }}
           >
-            {stageLabel}
+            Custom
           </Text>
         </View>
       ) : null}
+
     </View>
   );
 

@@ -490,6 +490,10 @@
     "./PtyAdapter": {
       "types": "./src/PtyAdapter.ts",
       "import": "./src/PtyAdapter.ts"
+    },
+    "./customBuild": {
+      "types": "./src/customBuild.ts",
+      "import": "./src/customBuild.ts"
     }
   },
   "scripts": {

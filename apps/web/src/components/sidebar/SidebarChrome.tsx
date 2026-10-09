@@ -1,3 +1,4 @@
+import { CUSTOM_APP_WORDMARK_LABEL } from "@t3tools/shared/customBuild";
 import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
@@ -125,7 +126,7 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        Code
+        {CUSTOM_APP_WORDMARK_LABEL}
       </span>
     </span>
   );

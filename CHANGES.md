@@ -112,3 +112,27 @@ database migration ledger. Do not inspect working files, conversations, or serve
 logs to perform an upgrade. Check migration IDs before switching builds and test
 the replacement with an isolated data home. The deployed build passed those
 checks and responded on the existing port, `3773`.
+
+## Custom client identity and installer launcher
+
+Requested on 2026-10-08.
+
+Clients built from this fork must visibly identify themselves as
+**T3 Code (Custom)**. Keep that label in the sidebar and window/tab title, the
+native About panel, mobile branding, and desktop package names. A remote
+environment's release channel must not hide the custom client identity.
+Preserve the existing application ID, profile directories, and saved connections.
+
+Use distinct **T3-Code-Custom** desktop artifact names so an older upstream
+installer cannot be mistaken for the local build.
+
+**Install-T3-Code.cmd** must build the current checkout before offering to install
+the newly produced Windows package. Preserve local changes; upstream integration
+remains the deliberate Git workflow above. Do not install an older artifact after
+a failed build. Include a Linux WSL runtime built from the same source, and keep
+package-validation temporary directories outside ancestors with node_modules.
+The launcher requires Docker Desktop with Linux containers for that runtime.
+
+The user must explicitly quit the running desktop client before the launcher
+starts installation. Changing the remote server alone does not update the
+desktop client's bundled UI. Do not close the live client from an agent session.

@@ -1,3 +1,5 @@
+import { CUSTOM_APP_DISPLAY_NAME } from "@t3tools/shared/customBuild";
+
 const NIGHTLY_SERVER_VERSION_PATTERN = /^[^-+]+-(?:nightly|preview)\.\d{8}\.\d+$/;
 
 export function formatAppDisplayName(input: {
@@ -27,6 +29,9 @@ export function resolveServerBackedAppDisplayName(input: {
   readonly fallbackStageLabel: string;
   readonly primaryServerVersion: string | null | undefined;
 }): string {
+  // This label identifies the client bundle, independently of its connected server.
+  if (input.fallbackDisplayName === CUSTOM_APP_DISPLAY_NAME) return input.fallbackDisplayName;
+
   const stageLabel = resolveServerBackedAppStageLabel({
     primaryServerVersion: input.primaryServerVersion,
     fallbackStageLabel: input.fallbackStageLabel,
