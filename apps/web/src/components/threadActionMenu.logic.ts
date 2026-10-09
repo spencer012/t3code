@@ -7,6 +7,7 @@ export type ThreadActionMenuId =
   | "project-settings"
   | "pin"
   | "unpin"
+  | "continuous-recovery"
   | "settle"
   | "unsettle"
   | "auto-settle"
@@ -66,6 +67,14 @@ export function buildDraftActionMenuItems(options: {
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
   readonly branch: string | null;
+  readonly continuousRecovery?:
+    | { readonly enabled: boolean; readonly canEnable: boolean }
+    | undefined;
+  /**
+   * Project scoping for the thread list. Null on surfaces with no scoped
+   * list behind the menu (the chat header), where the item must not show.
+   */
+
   readonly projectFilter: {
     readonly label: string;
     readonly isActive: boolean;
@@ -121,6 +130,20 @@ export function buildThreadActionMenuItems(
             : { id: "pin" as const, label: "Pin thread", icon: "pin" },
         ]
       : []),
+    ...(state.continuousRecovery === undefined
+      ? []
+      : [
+          {
+            id: "continuous-recovery" as const,
+            label: state.continuousRecovery.enabled ? "Stop continuing" : "Continue until finished",
+            icon: "refresh-cw",
+            disabled: !state.continuousRecovery.enabled && !state.continuousRecovery.canEnable,
+          },
+        ]),
+    // Both lifecycle actions stay available on pinned threads: settling
+    // clears the pin ("done" beats "keep on top"), and snoozing hides the
+    // card until wake with the pin intact.
+
     ...(state.supports.settlement
       ? [
           state.isSettled

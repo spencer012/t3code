@@ -40,6 +40,19 @@ function allIds(state: ThreadActionMenuState): string[] {
 }
 
 describe("buildThreadActionMenuItems", () => {
+  it("guards continuation in both directions and requires an eligible turn to enable it", () => {
+    const item = (enabled: boolean, canEnable: boolean, canOperate: boolean) =>
+      buildThreadActionMenuItems({
+        ...baseState,
+        canOperate,
+        continuousRecovery: { enabled, canEnable },
+      }).find((entry) => entry.id === "continuous-recovery");
+    expect(item(false, true, false)?.disabled).toBe(true);
+    expect(item(true, true, false)?.disabled).toBe(true);
+    expect(item(false, false, true)?.disabled).toBe(true);
+    expect(item(false, true, true)?.disabled).toBeFalsy();
+    expect(item(true, false, true)?.disabled).toBeFalsy();
+  });
   it.each([false, true])(
     "disables both lifecycle directions without permission (reversed: %s)",
     (reversed) => {

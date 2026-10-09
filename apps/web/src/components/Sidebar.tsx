@@ -4223,6 +4223,16 @@ export default function Sidebar() {
                 AuthOrchestrationOperateScope,
               ),
               branch: thread.branch ?? null,
+              continuousRecovery:
+                thread.continuousRecovery === undefined
+                  ? undefined
+                  : {
+                      enabled: thread.continuousRecovery !== null,
+                      canEnable:
+                        thread.latestRun != null &&
+                        thread.archivedAt === null &&
+                        thread.settledOverride !== "settled",
+                    },
               projectFilter: threadProjectGroup
                 ? {
                     label: threadProjectGroup.displayName,
@@ -4332,6 +4342,26 @@ export default function Sidebar() {
           case "rename":
             startThreadRename(threadRef, thread.title);
             return;
+          case "continuous-recovery": {
+            const result = await updateThreadMetadata({
+              environmentId: threadRef.environmentId,
+              input: {
+                threadId: threadRef.threadId,
+                continuousRecovery: thread.continuousRecovery == null,
+              },
+            });
+            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Could not change continuation",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
           case "regenerate-title": {
             if (isRegeneratingTitle) return;
             const result = await updateThreadMetadata({

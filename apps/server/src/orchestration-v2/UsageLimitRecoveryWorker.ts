@@ -64,7 +64,7 @@ export function limitRecoveryCommand(
     ...(recovery.requestId === undefined
       ? {}
       : { usageLimitRecoveryRequestId: recovery.requestId }),
-    text: "Continue where you left off.",
+    text: "Continue",
     attachments: [],
     dispatchMode: { type: "start_immediately" },
     createdBy: "user",

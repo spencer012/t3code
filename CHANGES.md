@@ -30,9 +30,17 @@ running console commands, queued messages, or background results awaiting delive
 - Count provider-reported background agents and commands, app-owned delegated
   tasks, pending completion delivery, and terminal subprocess activity. An idle
   shell is not running work. A dev server or active monitor keeps this mode armed.
-- A successful response with work remaining schedules another continuation.
-  Once a successful response has no remaining work, disarm without sending an
-  extra prompt. Checkpoint completion must finish before that decision.
+- A successful response waiting on background agents, monitors, or consoles keeps
+  the mode armed quietly. Use real completion notifications and queued results to
+  wake the parent; do not periodically ask it for unchanged status.
+- A native task ending after the parent response is unobserved work until a later
+  response handles it. Do not disarm in the gap before its completion wake arrives.
+- A completed background wake cannot erase an earlier root usage-limit deadline.
+  Keep the mode armed and recover when the current provider quota resets, including
+  a newer reset reported by a later failure. Finish only after a successful response
+  after that reset with no work or results remaining.
+- Automatic continuation messages contain only **Continue**. Checkpoint completion
+  must finish before deciding the thread is done.
 - Drain held queued messages after a successful recovery. Do not declare the
   thread finished with saved input or background results still waiting.
 - Each attempt checks current state under the thread lock. An old check may
@@ -147,3 +155,14 @@ refresh only the Custom executable and its Start Menu/Desktop shortcut reference
 through Shell change notifications. Preserve this step when changing the installer
 workflow or display name. Keep the app, Explorer, pinned positions, unrelated icon
 caches, and user data intact. A scoped refresh restored the icon on this machine.
+
+## Continuation recovery corrections
+
+Corrected on 2026-10-09.
+
+Keep the thread-title and sidebar menus able to start or stop continuous recovery
+when the usage-limit banner is absent. This also lets the user re-enable a flag
+cleared by an older buggy build. Apply the same operate permission and existing-turn
+guards across web, desktop, and mobile. Preserve explicit Stop/archive/settle
+cancellation and queue delivery. Do not re-enable previously cleared flags without
+a user action.

@@ -131,6 +131,16 @@ export function useThreadActionMenu(input: {
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
         branch: thread.branch ?? null,
+          continuousRecovery:
+            thread.continuousRecovery === undefined
+              ? undefined
+              : {
+                  enabled: thread.continuousRecovery !== null,
+                  canEnable:
+                    thread.latestRun != null &&
+                    thread.archivedAt === null &&
+                    thread.settledOverride !== "settled",
+                },
         projectFilter: null,
         isPinned: thread.pinnedAt != null,
         isSettled: supports.settlement && thread.settledOverride === "settled",
@@ -206,6 +216,17 @@ export function useThreadActionMenu(input: {
           }
           return;
         }
+          case "continuous-recovery":
+            await reportFailure("Could not change continuation", () =>
+              updateThreadMetadata({
+                environmentId: threadRef.environmentId,
+                input: {
+                  threadId: threadRef.threadId,
+                  continuousRecovery: thread.continuousRecovery == null,
+                },
+              }),
+            );
+            return;
         case "settle":
           await reportFailure("Failed to settle thread", () => settleThread(threadRef));
           return;
@@ -226,6 +247,7 @@ export function useThreadActionMenu(input: {
         case "auto-settle:disabled":
           await reportFailure("Failed to update auto-settle", () =>
             setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
+
           );
           return;
         case "rename":
@@ -312,6 +334,7 @@ export function useThreadActionMenu(input: {
             failureToast("Failed to delete thread", squashAtomCommandFailure(deleted));
           }
           return;
+
         }
         default:
           return;

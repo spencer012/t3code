@@ -6593,6 +6593,41 @@ it.layer(layerTest)("continuous usage-limit recovery", (it) => {
     }),
   );
 
+  it.effect("keeps a completed background wake armed until the quota reset and resumes once", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const { threadId } = yield* seed("completed-background-wake");
+      const armed = (yield* orchestrator.getThreadProjection(threadId)).thread.continuousRecovery!;
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("continuous:completed-background-wake"),
+        threadId,
+        messageId: MessageId.make("continuous:completed-background-wake"),
+        text: "Background activity updated.",
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+      });
+      yield* endLatest(threadId, "completed", "completed-background-wake");
+      yield* check(threadId, "completed-background-wake:before-reset");
+      let current = yield* orchestrator.getThreadProjection(threadId);
+      assert.isNotNull(current.thread.continuousRecovery);
+      assert.equal(current.thread.continuousRecovery!.requestId, armed.requestId);
+      assert.lengthOf(current.runs, 2);
+      yield* TestClock.adjust("1 minute");
+      yield* check(threadId, "completed-background-wake:at-reset");
+      current = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(current.runs, 3);
+      assert.equal(current.messages.at(-1)!.text, "Continue");
+      yield* endLatest(threadId, "completed", "completed-background-wake:recovered");
+      yield* check(threadId, "completed-background-wake:finished");
+      current = yield* orchestrator.getThreadProjection(threadId);
+      assert.isNull(current.thread.continuousRecovery);
+      assert.lengthOf(current.runs, 3);
+    }),
+  );
+
   it.effect.each(["console", "agent", "pending-result"] as const)(
     "keeps a successful response armed while %s work remains, then finishes",
     (kind) =>
@@ -6644,7 +6679,14 @@ it.layer(layerTest)("continuous usage-limit recovery", (it) => {
         yield* check(threadId, "unfinished-" + kind, kind === "console");
         let current = yield* orchestrator.getThreadProjection(threadId);
         assert.isNotNull(current.thread.continuousRecovery);
-        assert.lengthOf(current.runs, 2);
+        assert.lengthOf(current.runs, 1);
+        for (const tick of [1, 2, 3]) {
+          yield* TestClock.adjust("1 minute");
+          yield* check(threadId, "unchanged-work-" + kind + tick, kind === "console");
+          current = yield* orchestrator.getThreadProjection(threadId);
+          assert.lengthOf(current.runs, 1);
+          assert.equal(current.thread.continuousRecovery!.attempt, 0);
+        }
         yield* endLatest(threadId, "completed", "finished-" + kind);
         if (kind !== "console") {
           const task = current.subagents.find((task) => task.id === taskId)!;
@@ -6673,8 +6715,165 @@ it.layer(layerTest)("continuous usage-limit recovery", (it) => {
         yield* check(threadId, "finished-" + kind);
         current = yield* orchestrator.getThreadProjection(threadId);
         assert.isNull(current.thread.continuousRecovery);
-        assert.lengthOf(current.runs, 2);
+        assert.lengthOf(current.runs, 1);
       }),
+  );
+
+  it.effect.each(["completed", "failed"] as const)(
+    "keeps native %s results armed until the parent observes them",
+    (status) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const { threadId } = yield* seed("native-result-" + status, "missing");
+        yield* check(threadId, "native-result:" + status + ":recover");
+        let current = yield* orchestrator.getThreadProjection(threadId);
+        const parent = current.runs.at(-1)!;
+        const now = yield* DateTime.now;
+        const task = {
+          id: NodeId.make("continuous:native-result:" + status),
+          threadId,
+          runId: parent.id,
+          parentNodeId: parent.rootNodeId!,
+          origin: "provider_native" as const,
+          createdBy: "agent" as const,
+          driver: ProviderDriverKind.make("codex"),
+          providerInstanceId: modelSelection.instanceId,
+          providerThreadId: current.providerThreads[0]!.id,
+          childThreadId: null,
+          nativeTaskRef: null,
+          prompt: "Background work.",
+          title: null,
+          model: null,
+          status: "running" as const,
+          result: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+        };
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("continuous:native-running:" + status),
+              type: "subagent.updated",
+              threadId,
+              runId: parent.id,
+              nodeId: task.id,
+              occurredAt: now,
+              payload: task,
+            },
+          ],
+        });
+        yield* endLatest(threadId, "completed", "native-result:" + status + ":waiting");
+        yield* TestClock.adjust("2 minutes");
+        yield* check(threadId, "native-result:" + status + ":quiet");
+        assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+        const completedAt = yield* DateTime.now;
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("continuous:native-ended:" + status),
+              type: "subagent.updated",
+              threadId,
+              runId: parent.id,
+              nodeId: task.id,
+              occurredAt: completedAt,
+              payload: {
+                ...task,
+                status,
+                completedAt,
+                updatedAt: completedAt,
+                result: "Background task ended.",
+              },
+            },
+          ],
+        });
+        // The native completion is persisted before its normal wake is offered.
+        yield* check(threadId, "native-result:" + status + ":wake-gap");
+        current = yield* orchestrator.getThreadProjection(threadId);
+        assert.lengthOf(current.runs, 3);
+        assert.isNotNull(current.thread.continuousRecovery);
+        assert.equal(current.messages.at(-1)!.text, "Continue");
+        yield* endLatest(threadId, "completed", "native-result:" + status + ":observed");
+        yield* check(threadId, "native-result:" + status + ":finished");
+        current = yield* orchestrator.getThreadProjection(threadId);
+        assert.isNull(current.thread.continuousRecovery);
+        assert.lengthOf(current.runs, 3);
+      }),
+  );
+
+  it.effect("uses the newest quota reset after a second limit and a completed wake", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const { threadId } = yield* seed("second-quota");
+      yield* TestClock.adjust("1 minute");
+      yield* check(threadId, "second-quota:first-reset");
+      yield* endLatest(threadId, "failed", "second-quota:limited-again");
+      const failed = (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)!;
+      const now = yield* DateTime.now;
+      const resetAt = DateTime.formatIso(DateTime.add(now, { minutes: 5 }));
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("continuous:second-quota-error"),
+            type: "turn-item.updated",
+            threadId,
+            runId: failed.id,
+            nodeId: failed.rootNodeId!,
+            occurredAt: now,
+            payload: {
+              id: TurnItemId.make("continuous:second-quota-error"),
+              type: "error",
+              threadId,
+              runId: failed.id,
+              nodeId: failed.rootNodeId!,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 2,
+              status: "failed",
+              title: "Usage limit reached",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              failure: {
+                class: "usage_limit",
+                message: "Another limit.",
+                code: null,
+                retryable: true,
+                resetAt,
+              },
+            },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("continuous:second-quota-wake"),
+        threadId,
+        messageId: MessageId.make("continuous:second-quota-wake"),
+        text: "Background activity updated.",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "agent",
+        creationSource: "server",
+      });
+      yield* endLatest(threadId, "completed", "second-quota:wake-completed");
+      yield* check(threadId, "second-quota:still-blocked");
+      let current = yield* orchestrator.getThreadProjection(threadId);
+      assert.isNotNull(current.thread.continuousRecovery);
+      assert.lengthOf(current.runs, 3);
+      yield* TestClock.adjust("4 minutes");
+      yield* check(threadId, "second-quota:not-the-old-reset");
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 3);
+      yield* TestClock.adjust("1 minute");
+      yield* check(threadId, "second-quota:latest-reset");
+      current = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(current.runs, 4);
+      assert.equal(current.messages.at(-1)!.text, "Continue");
+    }),
   );
 
   it.effect.each(["cancel", "stop", "archive", "settle"] as const)(
@@ -6924,7 +7123,7 @@ it.layer(layerTest)("continuous usage-limit recovery", (it) => {
       });
       yield* endLatest(threadId, "completed", "provider-background:completed");
       yield* check(threadId, "provider-background:unfinished");
-      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 2);
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 1);
       yield* endLatest(threadId, "completed", "provider-background:finished");
       yield* sink.write({
         events: [
@@ -6940,7 +7139,7 @@ it.layer(layerTest)("continuous usage-limit recovery", (it) => {
       yield* check(threadId, "provider-background:all-finished");
       const finished = yield* orchestrator.getThreadProjection(threadId);
       assert.isNull(finished.thread.continuousRecovery);
-      assert.lengthOf(finished.runs, 2);
+      assert.lengthOf(finished.runs, 1);
     }),
   );
 

@@ -4712,7 +4712,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           commandId: command.commandId,
           threadId: command.threadId,
           messageId: MessageId.make(`continuous-resume:${recovery.requestId}:${recovery.attempt}`),
-          text: "Continue where you left off. Finish the original task, including any background agents and running commands.",
+          text: "Continue",
           attachments: [],
           dispatchMode: { type: "start_immediately" },
           createdBy: "user",
