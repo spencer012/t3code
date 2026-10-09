@@ -1,3 +1,4 @@
+import { CUSTOM_APP_WORDMARK_LABEL } from "@t3tools/shared/customBuild";
 import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { T, useGT } from "gt-react";
@@ -195,7 +196,7 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
         )}
       >
         {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product wordmark */}
-        {"Code"}
+        {CUSTOM_APP_WORDMARK_LABEL}
       </span>
     </span>
   );

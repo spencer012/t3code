@@ -44,6 +44,7 @@ import {
   resolveMacPasskeySigningConfiguration,
   resolveMergedStageDependencies,
   resolveBuildOptions,
+  resolveDesktopProductName,
   stageWslRuntimeArchive,
   ancestorNodeModulesPaths,
   copyDirectoryPreservingSymlinks,
@@ -245,6 +246,11 @@ const makePackagedAppFixture = Effect.fn("test.makePackagedAppFixture")(function
 });
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+  it("keeps the Custom product name across release channels", () => {
+    assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Custom)");
+    assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Custom)");
+  });
+
   it.effect("rejects overlapping builds from another process until restoration finishes", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

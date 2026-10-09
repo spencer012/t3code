@@ -18,7 +18,7 @@ import { resolveTaggedSourceVersion } from "../../scripts/lib/tagged-source-vers
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
-import { formatAppDisplayName, resolveWebAppStageLabel } from "./src/branding.logic";
+import { CUSTOM_APP_DISPLAY_NAME } from "@t3tools/shared/customBuild";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -244,24 +244,14 @@ function bundledDevStableNamesPlugin(): Plugin {
   };
 }
 
-// Stamps index.html's title with the name branding.ts resolves once the app
-// loads, so a tab opens on the right channel instead of flashing another's.
-// Desktop swaps in its injected branding from an inline script in index.html.
+// Stamps index.html's title with the custom client name branding.ts uses, so a
+// tab never flashes an upstream channel name. Desktop swaps in its injected
+// branding from an inline script in index.html.
 function bootstrapTitlePlugin(): Plugin {
-  let development = false;
   return {
     name: "t3code:bootstrap-title",
-    configResolved(config) {
-      // The same flag Vite exposes to the app as import.meta.env.DEV.
-      development = !config.isProduction;
-    },
     transformIndexHtml(html) {
-      const stageLabel = resolveWebAppStageLabel({
-        hostedAppChannel: configuredHostedAppChannel,
-        development,
-      });
-      const title = formatAppDisplayName({ baseName: "T3 Code", stageLabel });
-      return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
+      return html.replace(/<title>[^<]*<\/title>/, `<title>${CUSTOM_APP_DISPLAY_NAME}</title>`);
     },
   };
 }
