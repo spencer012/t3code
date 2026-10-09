@@ -136,3 +136,14 @@ The launcher requires Docker Desktop with Linux containers for that runtime.
 The user must explicitly quit the running desktop client before the launcher
 starts installation. Changing the remote server alone does not update the
 desktop client's bundled UI. Do not close the live client from an agent session.
+
+## Windows taskbar icon refresh
+
+Requested on 2026-10-08.
+
+The Custom rename can leave Windows displaying a cached blank taskbar icon even
+when the executable and shortcuts contain the correct T3 icon. After installation,
+refresh only the Custom executable and its Start Menu/Desktop shortcut references
+through Shell change notifications. Preserve this step when changing the installer
+workflow or display name. Keep the app, Explorer, pinned positions, unrelated icon
+caches, and user data intact. A scoped refresh restored the icon on this machine.
