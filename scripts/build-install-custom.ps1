@@ -126,6 +126,7 @@ try {
         if ($installed.ExitCode -notin @(0,3010)) {
             throw "Installer exited with code $($installed.ExitCode)."
         }
+        & (Join-Path $PSScriptRoot 'refresh-custom-icon.ps1')
         Write-Host 'Custom client installed. Look for T3 Code (Custom) in its sidebar.' -ForegroundColor Green
     }
 } catch {
