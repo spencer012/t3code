@@ -203,6 +203,8 @@ desktop, and contracts versions aligned through the release version script.
 Adopt newer upstream release versions during future updates instead of keeping
 this version pinned. Preserve the custom identity and continuation behavior.
 
-Build and install the matching Linux CLI archive in the server container using
-the existing local runtime selection and startup override. Retain the prior
-runtime for rollback and verify the archive with an isolated data home.
+The Linux CLI archive from `b57656f12a` is installed and running in
+the server container. It passed isolated startup checks in the builder and target
+container, and the live server reports `0.0.46` on the existing port, `3773`.
+The startup override still selects the local runtime. Keep `f25cceab9f` for
+rollback and preserve isolated verification before future upgrades.
