@@ -191,3 +191,18 @@ container had been recreated since the earlier deployment, preserving the
 runtime cache while restoring the upstream startup script. The local-runtime
 override was restored, with that startup script backed up beside it. Verify both the startup
 override and the running executable after each upgrade or container recreation.
+
+## Release version and OpenCode 2 update
+
+Requested on 2026-10-10.
+
+The custom branch is rebased onto upstream main at `a8bdfdb541`, including its
+OpenCode 2 fixes. Release package versions are `0.0.46` so the custom server
+and clients report the expected release for compatibility. Keep server, web,
+desktop, and contracts versions aligned through the release version script.
+Adopt newer upstream release versions during future updates instead of keeping
+this version pinned. Preserve the custom identity and continuation behavior.
+
+Build and install the matching Linux CLI archive in the server container using
+the existing local runtime selection and startup override. Retain the prior
+runtime for rollback and verify the archive with an isolated data home.
