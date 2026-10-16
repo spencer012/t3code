@@ -11,11 +11,14 @@ rsync -rlt --exclude='.git/' --exclude='node_modules/' --exclude='.pnpm-store/' 
   /source/ /home/vp/workspace/repo/
 cd /home/vp/workspace/repo
 
-vp install --frozen-lockfile \
+# Package downloads go through Socket Firewall. `vp install` only delegates to
+# pnpm, which sfw recognizes by name.
+command -v sfw >/dev/null || { echo "sfw is missing from the builder image; rebuild it" >&2; exit 1; }
+vp env exec sfw pnpm install --frozen-lockfile \
   --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
 vp run build:desktop
 version=$(vp env exec node -p "JSON.parse(require('node:fs').readFileSync('apps/server/package.json', 'utf8')).version")
-cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml \
+sfw cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml \
   --target x86_64-unknown-linux-gnu
 
 if [ "$BUILD_LINUX_DESKTOP" = "1" ]; then
