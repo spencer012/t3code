@@ -1,3 +1,5 @@
+import { SavedConnectionsToolkit } from "./toolkits/savedConnections/tools.ts";
+import * as SavedConnectionsHandlers from "./toolkits/savedConnections/handlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1238,8 +1240,14 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
     registrations,
   }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
+export const layerSavedConnectionsToolkit = toolkitRegistration(
+  SavedConnectionsToolkit,
+  SavedConnectionsHandlers.layer,
+);
+
 /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
 export const layerTools = Layer.mergeAll(
+  layerSavedConnectionsToolkit,
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,

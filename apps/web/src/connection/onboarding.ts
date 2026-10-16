@@ -1,3 +1,5 @@
+import { executeSavedConnectionRequest } from "@t3tools/client-runtime/saved-connection-request";
+import type { EnvironmentId, SavedConnectionRequestResult } from "@t3tools/contracts";
 import { ConnectionOnboarding } from "@t3tools/client-runtime/connection";
 import {
   createAtomCommandScheduler,
@@ -34,4 +36,14 @@ export const connectSshEnvironment = createRuntimeCommand(connectionAtomRuntime,
     ConnectionOnboarding.ConnectionOnboarding.pipe(
       Effect.flatMap((onboarding) => onboarding.registerSsh(input)),
     ),
+});
+
+// Never key or log this command by its URL: it contains the one-use credential.
+export const executeSavedConnection = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:connection:execute-saved-request",
+  execute: (input: {
+    request: SavedConnectionRequestResult;
+    pairingUrl?: string | undefined;
+    sourceEnvironmentId: EnvironmentId;
+  }) => executeSavedConnectionRequest(input.request, input.pairingUrl, input.sourceEnvironmentId),
 });

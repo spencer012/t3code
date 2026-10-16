@@ -1,3 +1,4 @@
+import { redactPairingData } from "../mcp/pairingPrivacy.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 /** Native and canonical views share write state to avoid races on the same thread file. */
 import * as NodeCrypto from "node:crypto";
@@ -348,9 +349,16 @@ export function boundProviderEventForLogging(event: unknown): unknown {
     return true;
   };
   try {
-    if (fits(event, 0)) return event;
-  } catch {}
-  return summarizeProviderEvent(event);
+    if (fits(event, 0)) return redactPairingData(event);
+  } catch {
+    // A failing accessor must not escape into provider processing.
+  }
+  try {
+    return redactPairingData(summarizeProviderEvent(event));
+  } catch {
+    return { redacted: true };
+  }
+
 }
 
 export const writeBatchedMessages = Effect.fnUntraced(function* (

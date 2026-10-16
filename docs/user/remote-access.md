@@ -64,6 +64,17 @@ opens and approve. The new limit applies the next time you add a machine. If you
 cancel or downgrade T3 Chat, machines you already linked stay linked, but you
 cannot add more until you are under the limit again.
 
+## Let an agent save a connection
+
+An agent running in a full-access T3 thread can offer to add a newly created
+machine to your app. Approve its card to redeem the pairing link, or decline it.
+It can also offer to forget a saved connection and its credential on this device.
+Removing a saved connection leaves the remote machine running.
+
+Answer these cards in the desktop or web app. The change applies to the app that
+answers, and the agent receives the result automatically. If the pairing link
+expires, ask the agent for a fresh one.
+
 ## Pair over a LAN or private network
 
 Use direct pairing when the other device can reach the host's network address.

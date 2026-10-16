@@ -1594,6 +1594,10 @@ export function createServerEnvironmentAtoms<R, E>(
     }),
     // Off the config lane: answering a card must not queue behind settings
     // edits. One answer per card at a time.
+    respondSavedConnectionRequest: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:saved-connections:respond",
+      tag: WS_METHODS.savedConnectionsRespond,
+    }),
     answerSecretRequest: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:secrets:answer-request",
       tag: WS_METHODS.secretsAnswerRequest,
