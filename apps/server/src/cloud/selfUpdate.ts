@@ -24,6 +24,7 @@ import {
   CLI_RELEASE_BASE_URL_ENV,
   cliReleaseChannelOf,
   crossesReleaseTrack,
+  customReleaseTargetViolation,
 } from "@t3tools/shared/cliRelease";
 
 import packageJson from "../../package.json" with { type: "json" };
@@ -122,7 +123,13 @@ export function trackSwitchBlockReason(input: {
     : null;
 }
 
-export const make = Effect.fn("cloud.server_self_update.make")(function* () {
+export const make = Effect.fn("cloud.server_self_update.make")(function* (
+  options: {
+    /** The running server's version; tests override it to exercise the custom release policy. */
+    readonly runningVersion?: string;
+  } = {},
+) {
+  const runningVersion = options.runningVersion ?? packageJson.version;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const desktopAppUpdate = yield* DesktopAppUpdate.DesktopAppUpdate;
   const policy = yield* ManagedPolicy.ManagedPolicy;
@@ -136,7 +143,10 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const mirror = managedUpdateMirror(policy.document);
   const releaseBaseUrl =
     mirror?.feedUrl ??
-    Option.getOrUndefined(yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option));
+    (Option.getOrUndefined(
+      yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option),
+    )?.trim() ||
+      undefined);
   const inFlight = yield* Ref.make(false);
 
   yield* pruneRuntimesOnStart({ baseDir: serverConfig.baseDir, managed: launcher.managed }).pipe(
@@ -152,7 +162,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
 
   const crossesTrackUnsafely = (input: ServerSelfUpdateInput) =>
     trackSwitchBlockReason({
-      serverVersion: packageJson.version,
+      serverVersion: runningVersion,
       targetVersion: input.targetVersion,
       targetDatabaseMigration: input.targetDatabaseMigration,
       databaseMigration: () => databaseMigrationHead(serverConfig.dbPath),
@@ -195,6 +205,13 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
     if (!isExactServiceVersion(targetVersion)) {
       return yield* failWith(`'${targetVersion}' is not an exact t3 version.`);
     }
+    // Whichever client asked, a custom build stays on custom releases.
+    const violation = customReleaseTargetViolation({
+      runningVersion,
+      targetVersion,
+      releaseBaseUrl,
+    });
+    if (violation !== undefined) return yield* failWith(violation);
     if (yield* Ref.getAndSet(inFlight, true)) {
       return yield* failWith("A server update is already in progress.");
     }
@@ -212,6 +229,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         arch,
         releaseBaseUrl,
         requirePublishedRelease: mirror !== undefined,
+        runningVersion,
         validate: (runtime) =>
           runner
             .run({

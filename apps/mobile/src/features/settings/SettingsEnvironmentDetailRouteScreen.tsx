@@ -34,6 +34,7 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import {
   canMaintainEnvironment,
+  canCheckEnvironmentUpdate,
   canUpdateEnvironmentProvider,
   supportsEnvironmentUpdate,
 } from "./environment-maintenance";
@@ -261,9 +262,14 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                           : "You are up to date."}
                       </Text>
                     ) : null}
-                    {checkedRelease?.targetVersion &&
-                    !updatesDenial &&
-                    !supportsEnvironmentUpdate(config.environment.capabilities) ? (
+                    {!canCheckEnvironmentUpdate(config.environment.serverVersion) ? (
+                      <Text className="text-sm text-foreground-muted">
+                        Custom build. Update it from the desktop app or with t3 update on this
+                        machine.
+                      </Text>
+                    ) : checkedRelease?.targetVersion &&
+                      !updatesDenial &&
+                      !supportsEnvironmentUpdate(config.environment.capabilities) ? (
                       <Text className="text-sm text-foreground-muted">
                         {capabilities?.serverSelfUpdate === "desktop-managed"
                           ? "Update the desktop app on this machine."
@@ -278,7 +284,8 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                       onPress={() => void Linking.openURL(supportUrl).catch(() => undefined)}
                     />
                   ) : null}
-                  {updatesDenial ? null : (
+                  {updatesDenial ||
+                  !canCheckEnvironmentUpdate(config.environment.serverVersion) ? null : (
                     <SettingsActionRow
                       icon="arrow.clockwise"
                       label="Check for updates"

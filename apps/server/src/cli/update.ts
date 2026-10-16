@@ -4,7 +4,11 @@ import {
   CLI_RELEASE_CHANNELS,
   cliReleaseIndexPageUrl,
   cliReleaseChannelOf,
+  cliReleaseLatestCustomUrl,
+  customReleaseTargetViolation,
+  isCustomCliVersion,
   newestCliReleaseVersion,
+  parseLatestCustomVersion,
   releaseAssetUrl,
   updateFeedFileName,
   type CliReleaseChannel,
@@ -62,9 +66,48 @@ const decodeReleaseIndex = Schema.decodeUnknownEffect(Schema.fromJsonString(Rele
 const RELEASE_INDEX_TIMEOUT = Duration.seconds(30);
 const RELEASE_INDEX_MAX_PAGES = 10;
 
+/**
+ * Reads the newest custom version from the mirror's `latest-custom`. Custom
+ * builds are never published to GitHub, so there is no fallback.
+ */
+const resolveNewestCustomVersion = Effect.fn("cli.update.resolve_newest_custom")(function* (
+  releaseBaseUrl: string | undefined,
+) {
+  if (releaseBaseUrl === undefined) {
+    return yield* new CliUpdateError({
+      reason: `Custom releases come from a mirror; set ${CLI_RELEASE_BASE_URL_ENV} to it.`,
+    });
+  }
+  const httpClient = yield* HttpClient.HttpClient;
+  const body = yield* httpClient
+    .execute(HttpClientRequest.get(cliReleaseLatestCustomUrl(releaseBaseUrl)))
+    .pipe(
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
+      Effect.flatMap((response) => response.text),
+      Effect.mapError(
+        () => new CliUpdateError({ reason: "Could not read latest-custom from the mirror." }),
+      ),
+      Effect.timeoutOrElse({
+        duration: RELEASE_INDEX_TIMEOUT,
+        orElse: () =>
+          Effect.fail(new CliUpdateError({ reason: "Timed out reading the custom mirror." })),
+      }),
+    );
+  const version = parseLatestCustomVersion(body);
+  if (version === undefined) {
+    return yield* new CliUpdateError({
+      reason: "The mirror's latest-custom does not name an X.Y.Z-custom.N version.",
+    });
+  }
+  return version;
+});
+
+/** Asks GitHub for the newest published version on a channel, page by page. */
 export const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(function* (
   channel: CliReleaseChannel,
+  releaseBaseUrl?: string,
 ) {
+  if (channel === "custom") return yield* resolveNewestCustomVersion(releaseBaseUrl);
   const httpClient = yield* HttpClient.HttpClient;
   const environment = yield* HostProcess.Environment;
   const githubToken = environment.GH_TOKEN?.trim() || environment.GITHUB_TOKEN?.trim() || undefined;
@@ -367,6 +410,8 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   const mirror = managedUpdateMirror(policy.document);
 
   const currentVersion = packageJson.version;
+  const releaseBaseUrl =
+    mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined);
   const channel = input.channel ?? cliReleaseChannelOf(currentVersion);
   const refusal = managedUpdateRefusal(
     policy.document,
@@ -380,16 +425,29 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
       reason: `'${input.requestedVersion}' is not an exact t3 version.`,
     });
   }
+  if (isCustomCliVersion(currentVersion) && channel !== "custom") {
+    return yield* new CliUpdateError({
+      reason: `t3@${currentVersion} is a custom build and only follows the custom channel.`,
+    });
+  }
   const progress = createUpdateProgress();
   progress.status("Checking for updates...");
   const targetVersion = yield* (
     input.requestedVersion !== undefined
       ? Effect.succeed(input.requestedVersion)
       : mirror === undefined
-        ? resolveNewestVersion(channel)
+        ? resolveNewestVersion(channel, releaseBaseUrl)
         : resolveMirrorVersion(mirror, channel)
   ).pipe(Effect.ensuring(Effect.sync(progress.finish)));
   const targetChannel = cliReleaseChannelOf(targetVersion);
+  // Checked before anything is installed or restarted. The runtime installer
+  // repeats it, which covers explicit versions and cached runtimes too.
+  const violation = customReleaseTargetViolation({
+    runningVersion: currentVersion,
+    targetVersion,
+    releaseBaseUrl,
+  });
+  if (violation !== undefined) return yield* new CliUpdateError({ reason: violation });
 
   const currentChannel = cliReleaseChannelOf(currentVersion);
   if (targetChannel === "preview" && currentChannel !== "preview") {
@@ -502,8 +560,9 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     httpClient,
     platform,
     arch,
-    releaseBaseUrl: mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined),
+    releaseBaseUrl,
     requirePublishedRelease: mirror !== undefined,
+    runningVersion: currentVersion,
     validate: (paths) =>
       runner
         .run({
