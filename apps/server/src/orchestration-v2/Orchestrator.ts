@@ -494,6 +494,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.created.record":
       return command.parentThreadId;
     case "secret_request.record":
+    case "saved_connection_request.record":
       return command.threadId;
     case "thread.fork":
     case "thread.merge_back":
@@ -3505,6 +3506,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         now,
         cancelQueuedDelivery: false,
       });
+      yield* closeSavedConnectionRequests({ command, events, threadId: command.threadId, now });
     }
 
     // Settle joins archive here: both mean "done with this
@@ -7513,6 +7515,187 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
   );
 
+  const dispatchSavedConnectionRequestRecord = Effect.fn(
+    "orchestrationV2.dispatch.savedConnectionRequestRecord",
+  )(function* (
+    command: Extract<
+      OrchestrationV2InternalCommand,
+      { readonly type: "saved_connection_request.record" }
+    >,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+  ) {
+    const projection = yield* projectionStore
+      .getThreadRecords(
+        command.threadId,
+        ["runs", "nodes", "turnItems", "attempts", "providerTurns"],
+        { turnItemTypes: ["saved_connection_request"], messageRoles: [] },
+      )
+      .pipe(
+        Effect.mapError(
+          (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+        ),
+      );
+    const run = projection.runs.find((candidate) => candidate.id === command.runId);
+    if (run === undefined || run.rootNodeId !== command.nodeId) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `Node ${command.nodeId} is not the root of run ${command.runId}.`,
+      });
+    }
+    const existing = projection.turnItems.find((item) => item.id === command.turnItemId);
+    if (existing !== undefined && existing.type !== "saved_connection_request") {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `Turn item ${command.turnItemId} is not a saved connection request.`,
+      });
+    }
+    if (existing !== undefined && existing.runId !== command.runId) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `Saved connection request ${command.turnItemId} belongs to another run.`,
+      });
+    }
+    if (
+      existing === undefined &&
+      (command.connectionStatus !== "pending" ||
+        projection.thread.runtimeMode !== "full-access" ||
+        projection.thread.interactionMode !== "default" ||
+        projection.thread.archivedAt !== null ||
+        projection.thread.deletedAt !== null ||
+        !["preparing", "starting", "running"].includes(run.status))
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Saved connection requests require a live full-access/default thread.",
+      });
+    }
+    const now = yield* DateTime.now;
+    // A request is answered once, and a retry finds its card as it was
+    // asked: either one records the card unchanged.
+    const unchanged =
+      existing !== undefined &&
+      ((existing.connectionStatus !== "pending" && existing.connectionStatus !== "claimed") ||
+        command.connectionStatus === "pending");
+    const pending =
+      command.connectionStatus === "pending" || command.connectionStatus === "claimed";
+    const turnItem: OrchestrationV2TurnItem = unchanged
+      ? existing
+      : {
+          id: command.turnItemId,
+          threadId: command.threadId,
+          runId: command.runId,
+          nodeId: command.nodeId,
+          providerThreadId: run.providerThreadId,
+          providerTurnId: providerTurnForRun(projection, run)?.id ?? null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: existing?.ordinal ?? (yield* nextTurnItemOrdinal(projection)),
+          status: pending
+            ? "waiting"
+            : command.connectionStatus === "added" || command.connectionStatus === "removed"
+              ? "completed"
+              : command.connectionStatus === "failed"
+                ? "failed"
+                : "cancelled",
+          title: command.label,
+          startedAt: existing?.startedAt ?? now,
+          completedAt: pending ? null : now,
+          updatedAt: now,
+          type: "saved_connection_request",
+          operation: existing?.operation ?? command.operation,
+          label: existing?.label ?? command.label,
+          host: existing?.host ?? command.host,
+          targetEnvironmentId: existing?.targetEnvironmentId ?? command.targetEnvironmentId,
+          targetLabel: existing?.targetLabel ?? command.targetLabel,
+          resultEnvironmentId: command.resultEnvironmentId,
+          resultLabel: command.resultLabel,
+          failure: command.failure,
+          connectionStatus: command.connectionStatus,
+        };
+    yield* emit(
+      events,
+      command,
+    )({
+      type: "turn-item.updated",
+      threadId: command.threadId,
+      runId: command.runId,
+      nodeId: command.nodeId,
+      providerInstanceId: run.providerInstanceId,
+      occurredAt: now,
+      payload: turnItem,
+    });
+    if (
+      command.wake !== undefined &&
+      !unchanged &&
+      !pending &&
+      projection.thread.archivedAt === null &&
+      projection.thread.deletedAt === null
+    ) {
+      yield* dispatchMessage(
+        {
+          type: "message.dispatch",
+          commandId: command.commandId,
+          threadId: command.threadId,
+          messageId: command.wake.messageId,
+          text: command.wake.text,
+          notification: command.wake.notification,
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+          createdBy: "agent",
+          creationSource: "server",
+        },
+        events,
+        effects,
+      );
+    }
+  });
+
+  const closeSavedConnectionRequests = (input: {
+    command: OrchestrationV2ServerCommand;
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
+    threadId: ThreadId;
+    now: DateTime.Utc;
+  }) =>
+    Effect.gen(function* () {
+      const records = yield* projectionStore
+        .getThreadRecords(input.threadId, ["turnItems"], {
+          turnItemTypes: ["saved_connection_request"],
+          turnItemStatuses: ["waiting"],
+          messageRoles: [],
+        })
+        .pipe(mapDispatchError(input.command));
+      for (const item of records.turnItems) {
+        if (
+          item.type !== "saved_connection_request" ||
+          !["pending", "claimed"].includes(item.connectionStatus)
+        )
+          continue;
+        yield* emit(
+          input.events,
+          input.command,
+        )({
+          type: "turn-item.updated",
+          threadId: input.threadId,
+          ...(item.runId === null ? {} : { runId: item.runId }),
+          ...(item.nodeId === null ? {} : { nodeId: item.nodeId }),
+          occurredAt: input.now,
+          payload: {
+            ...item,
+            status: "cancelled",
+            connectionStatus: "failed",
+            failure: "interrupted",
+            completedAt: input.now,
+            updatedAt: input.now,
+          },
+        });
+      }
+    });
+
   const dispatchRuntimeRequestRespond = (
     command: Extract<OrchestrationV2Command, { readonly type: "runtime-request.respond" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -9120,6 +9303,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           now: input.now,
         });
       }
+      yield* closeSavedConnectionRequests({ ...input, threadId: thread.id });
     });
 
   const dispatchBackgroundWorkSettle = (
@@ -11300,6 +11484,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "secret_request.record":
         yield* dispatchSecretRequestRecord(command, events);
+        break;
+      case "saved_connection_request.record":
+        yield* dispatchSavedConnectionRequestRecord(command, events, effects);
         break;
       default:
         return yield* dispatchUnsupported(command);

@@ -876,6 +876,8 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
       return `Forked to thread ${item.targetThreadId}.`;
     case "thread_created":
       return `Created thread ${item.targetThreadId} with ${item.targetProviderInstanceId} (${item.targetModel}).`;
+    case "saved_connection_request":
+      return `${item.operation} ${item.label}: ${item.connectionStatus}`;
     case "secret_request":
       return `Asked the user for ${item.label}: ${item.secretStatus}.`;
     case "subagent":

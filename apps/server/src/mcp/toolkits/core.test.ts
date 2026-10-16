@@ -1,3 +1,4 @@
+import { SavedConnectionsToolkit } from "./savedConnections/tools.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
@@ -101,6 +102,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     AttachmentToolkit,
     ProjectToolkit,
     EnvironmentToolkit,
+    SavedConnectionsToolkit,
     PreviewControlsToolkit,
     DeviceToolkit,
     PullRequestsToolkit,

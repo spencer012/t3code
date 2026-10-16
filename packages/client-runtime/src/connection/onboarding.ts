@@ -35,6 +35,7 @@ import { orchestrationProtocolCompatibilityError } from "./compatibility.ts";
 import { connectionRoutes, routeEntry, sshTargetKey } from "./routes.ts";
 
 export interface PairingConnectionInput {
+  readonly label?: string;
   readonly pairingUrl?: string;
   readonly host?: string;
   readonly pairingCode?: string;
@@ -128,13 +129,13 @@ export const preparePairingRegistration = Effect.fn(
   return new BearerConnectionRegistration({
     target: new BearerConnectionTarget({
       environmentId: descriptor.environmentId,
-      label: descriptor.label,
+      label: input.label?.trim() || descriptor.label,
       connectionId,
     }),
     profile: new BearerConnectionProfile({
       connectionId,
       environmentId: descriptor.environmentId,
-      label: descriptor.label,
+      label: input.label?.trim() || descriptor.label,
       httpBaseUrl: target.httpBaseUrl,
       wsBaseUrl: target.wsBaseUrl,
     }),

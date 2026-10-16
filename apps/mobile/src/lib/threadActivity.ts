@@ -586,6 +586,7 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
     case "fork":
     case "thread_created":
       return "zap";
+    case "saved_connection_request":
     case "secret_request":
       return "lock";
   }
@@ -642,6 +643,8 @@ function itemSummary(
       return "Thread forked";
     case "thread_created":
       return "Thread created";
+    case "saved_connection_request":
+      return `${item.operation} ${item.label}. Open the desktop or web app to answer.`;
     case "secret_request":
       return item.label;
     case "dynamic_tool": {
@@ -701,6 +704,8 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "fork":
     case "thread_created":
       return item.targetThreadId;
+    case "saved_connection_request":
+      return item.connectionStatus;
     case "secret_request":
       return item.reason || null;
     case "subagent":

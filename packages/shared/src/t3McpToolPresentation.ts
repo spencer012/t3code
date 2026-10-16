@@ -305,6 +305,14 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_worktree_list: tool(["List", "Listing", "Listed", "workspace branches"], "worktree-list"),
   t3_preview_list: tool(["List", "Listing", "Listed", "preview tabs"], "browser", "browser"),
   t3_preview_close: tool(["Close", "Closing", "Closed", "a preview tab"], "browser", "browser"),
+  t3_saved_connection_add: tool(
+    ["Request", "Requesting", "Requested", "adding a saved connection"],
+    "environment-update",
+  ),
+  t3_saved_connection_remove: tool(
+    ["Request", "Requesting", "Requested", "removing a saved connection"],
+    "environment-update",
+  ),
   t3_environment_read: tool(
     ["Read", "Reading", "Read", "environment preferences"],
     "environment-read",

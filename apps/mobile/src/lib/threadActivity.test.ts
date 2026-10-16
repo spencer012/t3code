@@ -2908,3 +2908,19 @@ describe("MCP apps", () => {
     expect(feed("running").some((candidate) => candidate.type === "mcp-app")).toBe(false);
   });
 });
+
+it("shows a desktop/web approval hint for saved connection cards", () => {
+  const item: OrchestrationV2TurnItem = {
+    ...base("saved-connection", "2026-10-16T00:00:00.000Z", 1),
+    type: "saved_connection_request",
+    operation: "add",
+    label: "foo",
+    host: "foo.test",
+    connectionStatus: "pending",
+    status: "waiting",
+  };
+  const activities = buildThreadFeed([projected(item, 0)]).flatMap((entry) =>
+    entry.type === "activity-group" ? entry.activities : [],
+  );
+  expect(activities[0]?.summary).toContain("Open the desktop or web app");
+});

@@ -8,6 +8,40 @@ merge, preserve the intent below while adopting upstream implementations where
 they provide the same behavior. Do not preserve obsolete code just to avoid a
 rewrite.
 
+## Agent requests for saved connections
+
+Requested on 2026-10-16.
+
+Agents in live full-access/default threads can call `t3_saved_connection_add`
+with a single-use pairing URL, or `t3_saved_connection_remove` with an environment
+id, exact label, or host. Each call returns immediately and records a card in
+that thread. Add/Remove and Decline require one click in the desktop or web app.
+The app that answers changes its own saved connections through the same onboarding
+and removal services as Settings. Removing forgets its saved credential and cached
+threads; it makes no change to the remote machine. Mobile shows a prompt to use
+the desktop or web app.
+
+- Preserve immediate pending results and idempotent `clientRequestId` retries.
+  Outcomes notify the asking agent through the normal queued message path, even
+  after its original turn ends. Do not wait inside an MCP tool for approval.
+- Keep pairing URLs in server memory only. Cards, events, notifications, provider
+  logs, and normalized tool-call inputs must contain no pairing token. Decline,
+  completion, expiry, Stop, and archive discard it. A restarted server cannot
+  resume redemption; clicking its old card reports a failure and asks for a new link.
+- One client may claim each card. Lost clients expire after two minutes; unanswered
+  cards expire after fifteen minutes. Expired pairing credentials ask the agent to
+  mint a new link. Ambiguous removal targets require a more specific request.
+- Never remove primary/platform connections. A request cannot remove the connection
+  hosting its own thread, because that would disconnect the outcome channel; ask
+  from another environment. Saved SSH removal uses the existing local tunnel cleanup.
+- Outside OAuth MCP clients cannot request these cards. A card is consent to change
+  the answering client, not a server-to-server link or permission on a remote machine.
+
+When merging upstream work, prefer its card/action/notification infrastructure if
+it preserves these client-local semantics. Do not import the linked-environments
+stack merely to keep this feature. Both the app and the server hosting the asking
+thread need this customization; a target box only needs ordinary pairing support.
+
 ## Continuous usage-limit recovery
 
 Requested on 2026-10-08.

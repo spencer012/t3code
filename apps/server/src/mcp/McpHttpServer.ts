@@ -1,3 +1,5 @@
+import { SavedConnectionsToolkit } from "./toolkits/savedConnections/tools.ts";
+import * as SavedConnectionsHandlers from "./toolkits/savedConnections/handlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1052,7 +1054,13 @@ export const layerMcpTransport = McpServer.layerHttp({
   allowSessionTermination: true,
 }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
+export const layerSavedConnectionsToolkit = toolkitRegistration(
+  SavedConnectionsToolkit,
+  SavedConnectionsHandlers.layer,
+);
+
 export const layer = Layer.mergeAll(
+  layerSavedConnectionsToolkit,
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,

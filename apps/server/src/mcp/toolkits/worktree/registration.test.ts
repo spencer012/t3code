@@ -1,3 +1,4 @@
+import * as SavedConnectionRequests from "../../SavedConnectionRequests.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../../../orchestration-v2/ProjectionStore.ts";
 import * as DeviceService from "../../../device/DeviceService.ts";
@@ -46,6 +47,7 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(UsageLimitSources.UsageLimitSources)({}),
   Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
   Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+  Layer.mock(SavedConnectionRequests.SavedConnectionRequests)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
   Layer.mock(ProjectService.ProjectService)({}),
   Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),

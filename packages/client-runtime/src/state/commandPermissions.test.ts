@@ -121,6 +121,22 @@ describe("command permissions", () => {
       }),
     ),
   );
+  it.effect("requires the destination orchestration grant to answer saved connection cards", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const action = createCommandPermissions(runtime, WS_METHODS.savedConnectionsRespond);
+        registry.set(sessions(env), AsyncResult.success(grant(false)));
+        expect(registry.get(action.permissionAtom(env))).toBe(false);
+        expect((yield* action.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(action.permissionAtom(env))).toBe(true);
+        yield* action.authorize(registry, env);
+      }),
+    ),
+  );
   it.effect("waits for an initial grant", () =>
     Effect.scoped(
       Effect.gen(function* () {

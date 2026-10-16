@@ -1,3 +1,4 @@
+import { redactPairingData } from "../mcp/pairingPrivacy.ts";
 import {
   NodeId,
   CommandId,
@@ -45,7 +46,8 @@ export class ProviderEventNormalizeError extends Schema.TaggedError<ProviderEven
   {
     providerSessionId: ProviderSessionId,
     threadId: ThreadId,
-    providerEvent: ProviderAdapter.ProviderAdapterV2Event,
+    // Provider payloads can contain pairing credentials; errors retain only their kind.
+    providerEvent: Schema.Struct({ type: Schema.String }),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -339,7 +341,7 @@ export const layer: Layer.Layer<
             providerInstanceId: input.providerInstanceId,
             rawEventId: input.rawEventId,
             occurredAt,
-            payload: payloadInput.payload,
+            payload: redactPairingData(payloadInput.payload),
           }),
         );
       });
@@ -714,7 +716,7 @@ export const layer: Layer.Layer<
             new ProviderEventNormalizeError({
               providerSessionId: input.providerSessionId,
               threadId: input.threadId,
-              providerEvent: input.event,
+              providerEvent: { type: input.event.type },
               cause,
             }),
         ),

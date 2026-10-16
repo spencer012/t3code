@@ -1,3 +1,4 @@
+import { SavedConnectionRequestCard } from "./SavedConnectionRequestCard";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shallow } from "zustand/vanilla/shallow";
 import {
@@ -2959,6 +2960,15 @@ function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event"
   const { item, visibility, sourceThreadId } = row.projectedItem;
   if (item.type === "subagent" && (row.subagents?.length ?? 1) > 1) {
     return <V2SubagentGroup key={row.id} row={row} />;
+  }
+  if (item.type === "saved_connection_request") {
+    return (
+      <SavedConnectionRequestCard
+        environmentId={ctx.activeThreadEnvironmentId}
+        item={item}
+        visibility={visibility}
+      />
+    );
   }
   if (item.type === "secret_request") {
     return (

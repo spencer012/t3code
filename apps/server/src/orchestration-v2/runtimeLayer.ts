@@ -1,3 +1,4 @@
+import * as SavedConnectionRequests from "../mcp/SavedConnectionRequests.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
@@ -365,6 +366,9 @@ export const layerProduction = Layer.mergeAll(
   layerThreadLifecycleProvided,
   layerScheduledTaskProvided,
   layerSecretRequestsProvided,
+  SavedConnectionRequests.layer.pipe(
+    Layer.provide(Layer.mergeAll(layerThreadManagementProvided, layerEventSinkProvided)),
+  ),
   UsageLimitRecoveryWorker.layer.pipe(
     Layer.provide(Layer.mergeAll(ProjectionStore.layer, layerThreadManagementProvided)),
   ),
