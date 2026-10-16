@@ -32,7 +32,9 @@ VP_NODE_VERSION=26.8.2 vp env exec node apps/server/scripts/cli.ts build-exe
 mkdir -p /home/vp/cli-resource-monitor/linux-x64
 cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor \
   /home/vp/cli-resource-monitor/linux-x64/
-vp env exec node scripts/build-cli-archive.ts --platform linux --arch x64 \
+# The archive step runs its own `vp install --prod`; sfw's proxy environment
+# is inherited by it.
+sfw vp env exec node scripts/build-cli-archive.ts --platform linux --arch x64 \
   --version "$version" --resource-monitor-dir /home/vp/cli-resource-monitor \
   --output-dir /home/vp/artifacts
 vp env exec node scripts/smoke-cli-archive.ts \
