@@ -264,6 +264,11 @@ with `scripts/update-release-package-versions.ts`, and publish the Linux CLI to 
 - `scripts/install.sh` defaults to the custom channel when the mirror variable
   is set, reads `latest-custom`, and validates `T3CODE_VERSION` before its
   download cache shortcut.
+- The custom Linux build (`scripts/build-custom-linux.sh` in the
+  `linux-custom-builder` image) routes package downloads through Socket
+  Firewall: the image installs a pinned, checksummed `sfw`, and the build runs
+  `sfw pnpm install`, `sfw cargo build`, and the archive step (whose own
+  `vp install --prod` inherits sfw's proxy) under it.
 
 When adopting upstream changes to release discovery or runtime installation,
 keep these refusals ahead of any download or cache reuse.
