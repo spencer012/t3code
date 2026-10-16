@@ -36,6 +36,9 @@ the desktop or web app.
   from another environment. Saved SSH removal uses the existing local tunnel cleanup.
 - Outside OAuth MCP clients cannot request these cards. A card is consent to change
   the answering client, not a server-to-server link or permission on a remote machine.
+- Omit absent fields from tool results instead of setting them to `undefined`.
+  MCP `structuredContent` must be JSON; in 0.0.46-custom.3 the card was recorded
+  but the tool call itself returned an internal server error.
 
 When merging upstream work, prefer its card/action/notification infrastructure if
 it preserves these client-local semantics. Do not import the linked-environments

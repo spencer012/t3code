@@ -32,17 +32,22 @@ const TTL_MS = 15 * 60 * 1000;
 const CLAIM_TTL_MS = 2 * 60 * 1000;
 const open = (card: Card) =>
   card.connectionStatus === "pending" || card.connectionStatus === "claimed";
+// MCP structuredContent must be JSON, so absent fields are omitted rather than set to undefined.
 const resultOf = (card: Card): SavedConnectionRequestResult => ({
   turnItemId: card.id,
   operation: card.operation,
   label: card.label,
-  host: card.host,
-  targetEnvironmentId: card.targetEnvironmentId,
-  targetLabel: card.targetLabel,
   connectionStatus: card.connectionStatus,
-  resultEnvironmentId: card.resultEnvironmentId,
-  resultLabel: card.resultLabel,
-  failure: card.failure,
+  ...(card.host !== undefined ? { host: card.host } : {}),
+  ...(card.targetEnvironmentId !== undefined
+    ? { targetEnvironmentId: card.targetEnvironmentId }
+    : {}),
+  ...(card.targetLabel !== undefined ? { targetLabel: card.targetLabel } : {}),
+  ...(card.resultEnvironmentId !== undefined
+    ? { resultEnvironmentId: card.resultEnvironmentId }
+    : {}),
+  ...(card.resultLabel !== undefined ? { resultLabel: card.resultLabel } : {}),
+  ...(card.failure !== undefined ? { failure: card.failure } : {}),
 });
 
 /** Reject URL-shaped display strings so a misplaced pairing URL cannot enter a card. */
