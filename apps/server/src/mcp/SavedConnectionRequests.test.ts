@@ -400,6 +400,9 @@ describe("SavedConnectionRequests", () => {
         })
         .pipe(Stream.unwrap, Stream.runCollect);
       assert.equal(response.at(-1)?.isFailure, false);
+      // MCP structuredContent must be JSON; undefined fields fail CallToolResult validation.
+      const encoded = response.at(-1)?.encodedResult;
+      assert.deepStrictEqual(encoded, JSON.parse(JSON.stringify(encoded)));
       assert.notInclude(JSON.stringify(response), secret);
       assert.include(JSON.stringify(response), "pending");
     }).pipe(
