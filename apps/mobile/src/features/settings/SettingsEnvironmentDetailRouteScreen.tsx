@@ -28,6 +28,7 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import {
   canMaintainEnvironment,
+  canCheckEnvironmentUpdate,
   canUpdateEnvironmentProvider,
   findEnvironmentUpdate,
   supportsEnvironmentUpdate,
@@ -248,7 +249,12 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                           : "You are up to date."}
                       </Text>
                     ) : null}
-                    {!supportsEnvironmentUpdate(config.environment.capabilities) ? (
+                    {!canCheckEnvironmentUpdate(config.environment.serverVersion) ? (
+                      <Text className="text-sm text-foreground-muted">
+                        Custom build. Update it from the desktop app or with t3 update on this
+                        machine.
+                      </Text>
+                    ) : !supportsEnvironmentUpdate(config.environment.capabilities) ? (
                       <Text className="text-sm text-foreground-muted">
                         {capabilities?.serverSelfUpdate === "desktop-managed"
                           ? "Update the desktop app on this machine."
@@ -256,6 +262,7 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                       </Text>
                     ) : null}
                   </View>
+                  {canCheckEnvironmentUpdate(config.environment.serverVersion) ? (
                   <SettingsActionRow
                     icon="arrow.clockwise"
                     label="Check for updates"
@@ -279,6 +286,8 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                       });
                     }}
                   />
+                  ) : null}
+
                   {checkedRelease?.targetVersion &&
                   supportsEnvironmentUpdate(config.environment.capabilities) ? (
                     <SettingsActionRow

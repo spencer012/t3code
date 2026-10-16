@@ -65,16 +65,63 @@ export function parseChecksums(text: string): ReadonlyMap<string, string> {
   return checksums;
 }
 
-export type CliReleaseChannel = "stable" | "nightly" | "preview";
+export type CliReleaseChannel = "stable" | "nightly" | "preview" | "custom";
 export const CLI_RELEASE_CHANNELS: ReadonlyArray<CliReleaseChannel> = [
   "stable",
   "nightly",
   "preview",
+  "custom",
 ];
 
+// Fork builds are `X.Y.Z-custom.N` and are only ever served from a private
+// mirror. Kept strict so a custom build can never be matched by a looser tag.
+const CUSTOM_CLI_VERSION = /^\d+\.\d+\.\d+-custom\.\d+$/;
+
+/** Whether a version is a fork build that only installs from the custom mirror. */
+export function isCustomCliVersion(version: string): boolean {
+  return CUSTOM_CLI_VERSION.test(version);
+}
+
+/** The release train a version was published on, derived from its prerelease tag. */
+
 export function cliReleaseChannelOf(version: string): CliReleaseChannel {
+  if (isCustomCliVersion(version)) return "custom";
   const channel = /^[^-+]+-(nightly|preview)\.\d{8}\.\d+$/.exec(version)?.[1];
   return channel === "nightly" || channel === "preview" ? channel : "stable";
+}
+
+/** File at the mirror root naming the newest published custom version. */
+export const CLI_RELEASE_LATEST_CUSTOM_FILE = "latest-custom";
+
+export function cliReleaseLatestCustomUrl(baseUrl: string): string {
+  return `${baseUrl.trim().replace(/\/+$/, "")}/${CLI_RELEASE_LATEST_CUSTOM_FILE}`;
+}
+
+/** The version named by a `latest-custom` file, or undefined if it is not a custom version. */
+export function parseLatestCustomVersion(text: string): string | undefined {
+  const version = text.trim();
+  return isCustomCliVersion(version) ? version : undefined;
+}
+
+/**
+ * Why a running build may not move to `targetVersion`, or undefined when it
+ * may. A custom build installs only custom versions, and only from the
+ * mirror: without one the download would fall back to upstream GitHub.
+ * Upstream builds are unrestricted, so they can switch to a custom build.
+ */
+export function customReleaseTargetViolation(input: {
+  readonly runningVersion: string;
+  readonly targetVersion: string;
+  readonly releaseBaseUrl: string | undefined;
+}): string | undefined {
+  if (!isCustomCliVersion(input.runningVersion)) return undefined;
+  if (!isCustomCliVersion(input.targetVersion)) {
+    return `t3@${input.runningVersion} is a custom build and only installs X.Y.Z-custom.N releases; refusing t3@${input.targetVersion}.`;
+  }
+  if (!input.releaseBaseUrl?.trim()) {
+    return `t3@${input.runningVersion} is a custom build; set ${CLI_RELEASE_BASE_URL_ENV} to the custom release mirror before updating.`;
+  }
+  return undefined;
 }
 
 /**

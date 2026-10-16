@@ -4,9 +4,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import { HttpClient, HttpClientResponse } from "effect/http";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
-import { repointLauncher, resolveLauncherPath } from "./update.ts";
+import { repointLauncher, resolveLauncherPath, resolveNewestVersion } from "./update.ts";
 
 it.layer(NodeServices.layer)("t3 update launcher", (it) => {
   it.effect("repoints a symlink that lives in a runtime versions tree", () =>
@@ -101,3 +102,34 @@ it.layer(NodeServices.layer)("t3 update launcher", (it) => {
     }).pipe(Effect.scoped, Effect.provideService(HostProcess.Platform, "linux")),
   );
 });
+
+it.effect("custom discovery reads latest-custom from the mirror, never GitHub", () =>
+  Effect.gen(function* () {
+    const requests: string[] = [];
+    const client = (body: string) =>
+      HttpClient.make((request) => {
+        requests.push(request.url);
+        return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(body)));
+      });
+    const resolve = (body: string, mirror: string | undefined) =>
+      resolveNewestVersion("custom", mirror).pipe(
+        Effect.provideService(HttpClient.HttpClient, client(body)),
+      );
+
+    assert.equal(
+      yield* resolve("0.0.46-custom.2\n", "https://mirror.example/t3/"),
+      "0.0.46-custom.2",
+    );
+    assert.deepEqual(requests, ["https://mirror.example/t3/latest-custom"]);
+
+    const upstreamManifest = yield* resolve("0.0.47\n", "https://mirror.example/t3").pipe(
+      Effect.flip,
+    );
+    assert.include(upstreamManifest.message, "X.Y.Z-custom.N");
+
+    requests.length = 0;
+    const unmirrored = yield* resolve("0.0.46-custom.2\n", undefined).pipe(Effect.flip);
+    assert.include(unmirrored.message, "T3CODE_RELEASE_BASE_URL");
+    assert.deepEqual(requests, []);
+  }),
+);

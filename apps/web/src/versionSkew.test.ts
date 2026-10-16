@@ -114,6 +114,19 @@ describe("versionSkew", () => {
     },
   );
 
+  it("warns when a custom server is behind a custom client on the same base version", () => {
+    branding.APP_VERSION = "0.0.46-custom.2";
+    expect(resolveVersionMismatch("0.0.46-custom.1")).toMatchObject({
+      clientVersion: "0.0.46-custom.2",
+      serverVersion: "0.0.46-custom.1",
+    });
+    // custom.10 sorts after custom.9, and a server ahead needs nothing.
+    branding.APP_VERSION = "0.0.46-custom.10";
+    expect(resolveVersionMismatch("0.0.46-custom.9")).not.toBeNull();
+    expect(resolveVersionMismatch("0.0.46-custom.11")).toBeNull();
+    expect(resolveVersionMismatch("0.0.46-custom.10")).toBeNull();
+  });
+
   it("does not warn when a nightly server is ahead on the same release", () => {
     branding.APP_VERSION = "0.0.34-nightly.20260824.1125";
 

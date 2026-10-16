@@ -5,12 +5,15 @@
 #   curl -fsSL https://t3.codes/install.sh | sh
 #
 # Environment:
-#   T3CODE_CHANNEL           release train to follow: stable, nightly, or preview
-#                            (default: stable; preview is a maintainers' test train)
+#   T3CODE_CHANNEL           release train to follow: stable, nightly, preview, or
+#                            custom (default: custom when T3CODE_RELEASE_BASE_URL
+#                            is set, else stable; preview is a maintainers' test train)
 #   T3CODE_VERSION           exact version to install (overrides T3CODE_CHANNEL)
 #   T3CODE_HOME              T3 home directory (default: ~/.t3)
 #   T3CODE_INSTALL_BIN_DIR   where the `t3` symlink goes (default: ~/.local/bin)
-#   T3CODE_RELEASE_BASE_URL  mirror for releases/download (default: GitHub)
+#   T3CODE_RELEASE_BASE_URL  mirror for releases/download (default: GitHub). Custom
+#                            X.Y.Z-custom.N builds install only from a mirror, which
+#                            names the newest one in <mirror>/latest-custom.
 #
 # The archive is unpacked into $T3CODE_HOME/runtime/versions/<version>, the
 # same layout `t3 service install` uses, so the service reuses this download
@@ -18,7 +21,9 @@
 set -eu
 
 repo="pingdotgg/t3code"
-base_url="${T3CODE_RELEASE_BASE_URL:-https://github.com/${repo}/releases/download}"
+mirror_url="${T3CODE_RELEASE_BASE_URL:-}"
+mirror_url="${mirror_url%/}"
+base_url="${mirror_url:-https://github.com/${repo}/releases/download}"
 t3_home="${T3CODE_HOME:-$HOME/.t3}"
 bin_dir="${T3CODE_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 
@@ -142,16 +147,29 @@ else
   fail "sha256sum or shasum is required"
 fi
 
-channel="${T3CODE_CHANNEL:-stable}"
+# One line, digits only around the fixed separators: safe to use as a path.
+is_custom_version() {
+  case "$1" in *[!0-9A-Za-z.-]*) return 1 ;; esac
+  printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-custom\.[0-9]+$'
+}
+if [ -n "$mirror_url" ]; then channel="${T3CODE_CHANNEL:-custom}"; else channel="${T3CODE_CHANNEL:-stable}"; fi
 version="${T3CODE_VERSION:-}"
-if [ -z "$version" ]; then
+if [ -z "$version" ] && [ "$channel" = custom ]; then
+  # Custom builds are never on GitHub; the mirror names the newest one.
+  [ -n "$mirror_url" ] || fail "the custom channel needs T3CODE_RELEASE_BASE_URL"
+  tmp_latest="$(mktemp)"
+  fetch "${mirror_url}/latest-custom" "$tmp_latest" || { rm -f "$tmp_latest"; fail "could not read ${mirror_url}/latest-custom"; }
+  version="$(head -n 1 "$tmp_latest" | tr -d ' \t\r')"
+  rm -f "$tmp_latest"
+  is_custom_version "$version" || fail "${mirror_url}/latest-custom does not name an X.Y.Z-custom.N version"
+elif [ -z "$version" ]; then
   # Tags are v<semver>; the channel is the prerelease identifier, or none for
   # stable. Only tags of the requested train are considered, so a stable
   # install can never pick up a nightly or preview build by accident.
   case "$channel" in
     stable) tag_pattern='v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)' ;;
     nightly | preview) tag_pattern="v\([0-9][^\"]*-${channel}\.[0-9]*\.[0-9]*\)" ;;
-    *) fail "T3CODE_CHANNEL must be stable, nightly, or preview" ;;
+    *) fail "T3CODE_CHANNEL must be stable, nightly, preview, or custom" ;;
   esac
   tmp_index="$(mktemp)"
   fetch "https://api.github.com/repos/${repo}/releases?per_page=100" "$tmp_index"
@@ -159,6 +177,21 @@ if [ -z "$version" ]; then
   rm -f "$tmp_index"
   [ -n "$version" ] || fail "could not find a ${channel} release; set T3CODE_VERSION"
 fi
+# Checked before the version names a directory or skips the download.
+case "$version" in
+  '' | *[!0-9A-Za-z.-]*) fail "'${version}' is not an exact t3 version" ;;
+esac
+printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+  || fail "'${version}' is not an exact t3 version"
+case "$version" in
+  *-custom.*)
+    is_custom_version "$version" || fail "custom versions are X.Y.Z-custom.N, not ${version}"
+    [ -n "$mirror_url" ] || fail "custom builds install only from a mirror; set T3CODE_RELEASE_BASE_URL"
+    ;;
+  *)
+    [ "$channel" != custom ] || fail "the custom channel only installs X.Y.Z-custom.N versions, not ${version}"
+    ;;
+esac
 case "$version" in
   *-preview.*)
     printf '%s\n' \

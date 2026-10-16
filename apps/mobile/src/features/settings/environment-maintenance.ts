@@ -53,8 +53,21 @@ const Releases = Schema.Array(
 );
 const decodeReleases = Schema.decodeUnknownSync(Releases);
 
+/**
+ * Custom builds are published only to a private mirror the phone cannot
+ * reach, so the phone never looks for their updates on GitHub.
+ */
+export function canCheckEnvironmentUpdate(currentVersion: string) {
+  return cliReleaseChannelOf(currentVersion) !== "custom";
+}
+
+/** Preserve the host's release channel and never offer a downgrade. */
+
 export async function findEnvironmentUpdate(currentVersion: string, signal: AbortSignal) {
   const channel = cliReleaseChannelOf(currentVersion);
+  if (channel === "custom") {
+    throw new Error("Update custom builds from the desktop app or with t3 update on the host.");
+  }
   for (let page = 1; ; page++) {
     const response = await fetch(cliReleaseIndexPageUrl(page), { signal });
     if (!response.ok) throw new Error(`Could not check releases (${response.status}). Try again.`);

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   canMaintainEnvironment,
   canUpdateEnvironmentProvider,
+  canCheckEnvironmentUpdate,
   findEnvironmentUpdate,
   supportsEnvironmentUpdate,
 } from "./environment-maintenance";
@@ -191,6 +192,15 @@ describe("environment release checks", () => {
     );
     expect(fetchMock.mock.calls[1]?.[0]).toContain("page=2");
     expect(fetchMock.mock.calls[1]?.[1]).toEqual({ signal });
+  });
+
+  it("never looks for custom build updates on GitHub", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(canCheckEnvironmentUpdate("0.0.46-custom.1")).toBe(false);
+    expect(canCheckEnvironmentUpdate("0.0.46")).toBe(true);
+    await expect(findEnvironmentUpdate("0.0.46-custom.1", signal)).rejects.toThrow("t3 update");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("reports failed checks instead of claiming the server is current", async () => {

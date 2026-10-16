@@ -235,3 +235,36 @@ and the restarted server answered HTTP 200 with the new executable.
 The startup override still selects the local runtime. Keep
 `local/continuous-usage-recovery-b57656f12a` for rollback. The previous local
 packages remain in `release/custom/previous-0.0.46-02f8838a5a`.
+
+## Custom release channel
+
+Requested on 2026-10-15.
+
+Custom builds are versioned `X.Y.Z-custom.N` and are published only to a private
+mirror (`T3CODE_RELEASE_BASE_URL`), whose
+`latest-custom` file names the newest one. Bump all release packages together
+with `scripts/update-release-package-versions.ts`, and publish the Linux CLI to the mirror.
+
+- A custom build installs only other custom builds, and only from the mirror.
+  It never asks GitHub. Without the mirror variable, `t3 update`, remote server
+  updates and runtime downloads fail instead of falling back to upstream.
+- The guard runs wherever a target is accepted: `t3 update` (bare, `--channel`,
+  explicit versions, `--allow-downgrade`), the server self-update RPC, the
+  pinned-runtime installer (including cached runtimes), and the service
+  launcher's update hand-off. Keep it in every one of those paths.
+- Upstream builds are unrestricted, so an upstream server can move to a custom
+  build with `t3 update X.Y.Z-custom.N --allow-downgrade`; SemVer orders
+  `0.0.46-custom.1` below `0.0.46`.
+- `t3 service install` writes `T3CODE_RELEASE_BASE_URL` and
+  `NODE_EXTRA_CA_CERTS` from the installing shell into the unit (or plist).
+- Two custom versions compare in full in the client version-skew check, so
+  `custom.1` against `custom.2` offers **Update server**.
+- Mobile does not check for updates on custom servers; the phone cannot reach
+  the mirror. Update those from the desktop app or with `t3 update`.
+- `scripts/install.sh` defaults to the custom channel when the mirror variable
+  is set, reads `latest-custom`, and validates `T3CODE_VERSION` before its
+  download cache shortcut.
+
+When adopting upstream changes to release discovery or runtime installation,
+keep these refusals ahead of any download or cache reuse.
+

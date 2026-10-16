@@ -303,6 +303,56 @@ if (context.update?.status === "pending") {
     }),
   );
 
+  it.effect("refuses to move a custom build to an upstream runtime", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-service-launcher-custom-" });
+      const statePath = path.join(root, "runtime", "service-state.json");
+      const reasonPath = path.join(root, "rejected.txt");
+      const childSource = `
+const fs = require("node:fs");
+process.on("message", (message) => {
+  if (message.type !== "update-rejected") return;
+  fs.writeFileSync(${JSON.stringify(reasonPath)}, message.reason);
+  process.exit(0);
+});
+process.send({ type: "request-update", targetVersion: "1.1.0", dbPath: ${JSON.stringify(
+        path.join(root, "state.sqlite"),
+      )} });
+setInterval(() => {}, 1_000);
+`;
+      // Both runtimes are on disk, so only the custom policy can refuse.
+      for (const version of ["1.0.0-custom.1", "1.1.0"]) {
+        yield* writeFakeRuntime(
+          fs,
+          path,
+          path.join(root, "runtime", "versions", version),
+          childSource,
+        );
+      }
+      yield* Effect.promise(() =>
+        writeServiceState(statePath, {
+          protocol: SERVICE_LAUNCHER_PROTOCOL,
+          activeVersion: "1.0.0-custom.1",
+        }),
+      );
+
+      const launcher = new Launcher(root, yield* Effect.promise(() => readServiceState(statePath)));
+      yield* Effect.promise(() =>
+        launcher.run().then(
+          () => Promise.reject(new Error("launcher unexpectedly completed")),
+          () => Promise.resolve(),
+        ),
+      );
+
+      assert.include(yield* fs.readFileString(reasonPath), "custom build");
+      const state = yield* Effect.promise(() => readServiceState(statePath));
+      assert.equal(state.activeVersion, "1.0.0-custom.1");
+      assert.isUndefined(state.update);
+    }),
+  );
+
   it.effect("rolls back a trial that reports the wrong update ID", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

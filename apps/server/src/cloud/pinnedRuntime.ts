@@ -15,6 +15,8 @@ import {
   cliArchivePlatformKey,
   cliArchiveTarCommand,
   cliReleaseDownloadBaseUrl,
+  customReleaseTargetViolation,
+  isCustomCliVersion,
   parseChecksums,
 } from "@t3tools/shared/cliRelease";
 
@@ -110,6 +112,8 @@ interface PinnedRuntimeInstallInput {
   readonly arch: string;
   readonly httpClient: HttpClient.HttpClient;
   readonly releaseBaseUrl?: string | undefined;
+  /** The build doing the install. Decides the custom release policy. */
+  readonly runningVersion: string;
   readonly onProgress?: (progress: PinnedRuntimeProgress) => void;
 }
 
@@ -258,6 +262,20 @@ const installPinnedRuntime = Effect.fn("cloud.pinned_runtime.ensure_installed")(
   );
   const alreadyPinned =
     entryExists && Option.isSome(sentinel) && sentinel.value.trim() === input.version;
+  // Every path that installs or reuses a runtime passes through here, so the
+  // custom release policy holds whichever command or RPC picked the target.
+  // A cached custom runtime needs no mirror; anything downloaded does.
+  const violation = customReleaseTargetViolation({
+    runningVersion: input.runningVersion,
+    targetVersion: input.version,
+    releaseBaseUrl: input.releaseBaseUrl,
+  });
+  if (violation !== undefined && !(alreadyPinned && isCustomCliVersion(input.version))) {
+    return yield* new PinnedRuntimePreflightBlockedError({
+      version: input.version,
+      reason: violation,
+    });
+  }
   if (alreadyPinned) {
     input.onProgress?.({ stage: "cached" });
     yield* input.validate(paths);

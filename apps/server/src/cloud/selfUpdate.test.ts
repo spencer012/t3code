@@ -26,6 +26,7 @@ interface HarnessOptions {
   readonly beforeDownload?: Effect.Effect<void>;
   readonly requestUpdate?: ServiceLauncherClient.ServiceLauncherClient["Service"]["requestUpdate"];
   readonly desktopAppUpdate?: DesktopAppUpdate.DesktopAppUpdate["Service"];
+  readonly runningVersion?: string;
 }
 
 const archiveBytes = new TextEncoder().encode("not really a tarball");
@@ -109,7 +110,9 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
   const config = yield* ServerConfig.ServerConfig.pipe(
     Effect.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
   );
-  const selfUpdate = yield* ServerSelfUpdate.make().pipe(
+  const selfUpdate = yield* ServerSelfUpdate.make({
+    runningVersion: options.runningVersion ?? "1.0.0",
+  }).pipe(
     Effect.provideService(ProcessRunner.ProcessRunner, runner),
     Effect.provideService(ServiceLauncherClient.ServiceLauncherClient, launcher),
     Effect.provideService(
@@ -366,6 +369,20 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         (yield* desktop.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
       ).toContain("desktop app");
       expect([...web.order, ...desktop.order]).toEqual([]);
+    }),
+  );
+
+  it.effect("keeps a custom build on custom releases from the mirror before staging", () =>
+    Effect.gen(function* () {
+      // The test environment has no T3CODE_RELEASE_BASE_URL.
+      const { selfUpdate, order } = yield* makeHarness({ runningVersion: "1.0.0-custom.1" });
+      expect(
+        (yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
+      ).toContain("only installs");
+      expect(
+        (yield* selfUpdate.update({ targetVersion: "1.0.0-custom.2" }).pipe(Effect.flip)).reason,
+      ).toContain("T3CODE_RELEASE_BASE_URL");
+      expect(order).toEqual([]);
     }),
   );
 

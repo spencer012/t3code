@@ -14,6 +14,7 @@ import {
   pinnedRuntimeCommand,
   pinnedRuntimePaths,
   PinnedRuntimeInstallError,
+  PinnedRuntimePreflightBlockedError,
   type PinnedRuntimeProgress,
 } from "./pinnedRuntime.ts";
 
@@ -74,6 +75,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(yield* validChecksums, requests),
         releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path, commands),
@@ -131,6 +133,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
           path,
           platform: "linux",
           arch: "x64",
+          runningVersion: "1.0.0",
           httpClient: client,
           runner: extractingRunner(fs, path),
           validate: () => Effect.void,
@@ -197,6 +200,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: client,
         runner: extractingRunner(fs, path),
         validate: () => Effect.die("must not validate an interrupted archive"),
@@ -228,6 +232,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(`${"0".repeat(64)}  ${archiveName}\n`),
         runner: extractingRunner(fs, path, commands),
         validate: () => Effect.die("must not validate an unverified archive"),
@@ -254,6 +259,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(yield* validChecksums),
         runner: extractingRunner(fs, path),
         validate: (staging) =>
@@ -285,6 +291,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(yield* validChecksums),
         runner: extractingRunner(fs, path),
         validate: () =>
@@ -317,6 +324,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(yield* validChecksums),
         runner: extractingRunner(fs, path),
         validate: () => Effect.void,
@@ -346,6 +354,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(yield* validChecksums, requests),
         runner: extractingRunner(fs, path),
         validate: (paths) =>
@@ -380,6 +389,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: releaseHttpClient(yield* validChecksums),
         runner,
         validate: () => Effect.void,
@@ -389,6 +399,65 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
       yield* Fiber.interrupt(install);
       const versionsDir = path.join(baseDir, "runtime", "versions");
       assert.deepEqual(yield* fs.readDirectory(versionsDir), []);
+    }),
+  );
+
+  it.effect("keeps a custom build on custom runtimes from the mirror", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-custom-" });
+      const requests: string[] = [];
+      const install = (target: string, releaseBaseUrl: string | undefined) =>
+        ensurePinnedRuntimeInstalled({
+          baseDir,
+          version: target,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient("", requests),
+          releaseBaseUrl,
+          runningVersion: "0.0.46-custom.1",
+          runner: extractingRunner(fs, path),
+          validate: () => Effect.void,
+        }).pipe(Effect.flip);
+      // A cached upstream runtime is refused as firmly as a download.
+      const upstream = pinnedRuntimePaths(path, baseDir, "0.0.47", "linux");
+      yield* fs.makeDirectory(upstream.versionDir, { recursive: true });
+      yield* fs.writeFileString(upstream.entryPath, "#!/bin/sh\n");
+      yield* fs.writeFileString(upstream.sentinelPath, "0.0.47\n");
+      for (const target of ["0.0.47", "0.0.48"]) {
+        const refused = yield* install(target, "https://mirror.example/t3");
+        assert.instanceOf(refused, PinnedRuntimePreflightBlockedError);
+        assert.include(refused.message, "only installs");
+      }
+      // Without the mirror a custom download would fall back to GitHub.
+      const unmirrored = yield* install("0.0.46-custom.2", undefined);
+      assert.instanceOf(unmirrored, PinnedRuntimePreflightBlockedError);
+      assert.include(unmirrored.message, "T3CODE_RELEASE_BASE_URL");
+      assert.deepEqual(requests, []);
+
+      // An already installed custom runtime needs no mirror.
+      const cached = pinnedRuntimePaths(path, baseDir, "0.0.46-custom.2", "linux");
+      yield* fs.makeDirectory(cached.versionDir, { recursive: true });
+      yield* fs.writeFileString(cached.entryPath, "#!/bin/sh\n");
+      yield* fs.writeFileString(cached.sentinelPath, "0.0.46-custom.2\n");
+      const reused = yield* ensurePinnedRuntimeInstalled({
+        baseDir,
+        version: "0.0.46-custom.2",
+        fs,
+        path,
+        platform: "linux",
+        arch: "x64",
+        httpClient: releaseHttpClient("", requests),
+        releaseBaseUrl: undefined,
+        runningVersion: "0.0.46-custom.1",
+        runner: extractingRunner(fs, path),
+        validate: () => Effect.void,
+      });
+      assert.equal(reused.entryPath, cached.entryPath);
+      assert.deepEqual(requests, []);
     }),
   );
 });

@@ -205,6 +205,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
     environmentPath: string | undefined = installerPath,
     cliVersion = "1.2.3",
     serviceBaseDir = baseDir,
+    extraEnv: Record<string, string> = {},
   ) =>
     Effect.gen(function* () {
       const paths = pinnedRuntimePaths(path, serviceBaseDir, cliVersion, platform);
@@ -216,6 +217,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
         logsDir: path.join(serviceBaseDir, "userdata", "logs"),
         cliVersion,
         host: { execPath: "/usr/bin/t3" },
+        runningVersion: "1.2.3",
       });
     }).pipe(
       Effect.provideService(ProcessRunner.ProcessRunner, runner),
@@ -232,6 +234,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
             ConfigProvider.fromEnv({
               env: {
                 HOME: home,
+                ...extraEnv,
                 ...(environmentPath === undefined || environmentPath === ""
                   ? {}
                   : { PATH: environmentPath }),
@@ -299,6 +302,32 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         expect(yield* fs.readFileString(plan.unitPath)).toBe(unit);
         expect(commands).not.toContain("systemctl --user stop t3code.service");
       }),
+  );
+
+  it.effect("carries the release mirror and its CA into the unit across reinstalls", () =>
+    Effect.gen(function* () {
+      const { makeService, fs } = yield* makeHarness();
+      const mirrorEnv = {
+        T3CODE_RELEASE_BASE_URL: "https://mirror.example:8443/t3",
+        NODE_EXTRA_CA_CERTS: "/usr/local/share/ca-certificates/release-mirror.crt",
+      };
+      const mirrored = yield* makeService(undefined, "1.2.3", undefined, mirrorEnv);
+      const plan = yield* mirrored.install();
+      const unit = yield* fs.readFileString(plan.unitPath);
+      expect(unit).toContain("Environment=T3CODE_RELEASE_BASE_URL=https://mirror.example:8443/t3");
+      expect(unit).toContain(
+        "Environment=NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/release-mirror.crt",
+      );
+      expect((yield* mirrored.status).current).toBe(true);
+
+      // A shell without the mirror sees the unit as out of date rather than
+      // silently dropping the mirror, and reinstalling from a mirrored shell
+      // restores it.
+      const plain = yield* makeService();
+      expect((yield* plain.status).current).toBe(false);
+      yield* mirrored.install();
+      expect(yield* fs.readFileString(plan.unitPath)).toBe(unit);
+    }),
   );
 
   it.effect("enables lingering before installing and repairs stopped or disabled services", () =>

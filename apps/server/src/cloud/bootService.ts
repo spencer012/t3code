@@ -14,6 +14,7 @@ import * as Schema from "effect/Schema";
 
 import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
 
+import packageJson from "../../package.json" with { type: "json" };
 import * as ProcessRunner from "../processRunner.ts";
 import {
   ensurePinnedRuntimeInstalled,
@@ -75,7 +76,16 @@ export interface BootServicePlan {
   readonly baseDir: string;
   readonly logPath: string;
   readonly unitPath: string;
+  /**
+   * Release-mirror settings present when the service was installed. The
+   * server reads them to download updates, and a service manager does not
+   * inherit the installing shell's environment, so they go into the unit.
+   */
+  readonly environment?: ReadonlyArray<readonly [name: string, value: string]>;
 }
+
+/** Variables carried from the installing shell into the service. */
+const BOOT_SERVICE_PASSTHROUGH_ENV = [CLI_RELEASE_BASE_URL_ENV, "NODE_EXTRA_CA_CERTS"] as const;
 
 /** Pure renderer: service units cannot rely on the user's shell or PATH. */
 export function renderBootServiceUnit(plan: BootServicePlan): string {
@@ -91,6 +101,9 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
     "WorkingDirectory=%h",
     `Environment=T3CODE_HOME=${quoteSystemdValue(plan.baseDir)}`,
     `Environment=${BOOT_SERVICE_UNIT_ENV}=${BOOT_SERVICE_UNIT_FILE}`,
+    ...(plan.environment ?? []).map(
+      ([name, value]) => `Environment=${name}=${quoteSystemdValue(value)}`,
+    ),
     `ExecStart=${plan.program.map(quoteSystemdValue).join(" ")}`,
     // Let the launcher mark an explicit stop before it signals the server.
     // systemd still SIGKILLs the whole cgroup if graceful shutdown times out.
@@ -157,6 +170,10 @@ export function renderBootServicePlist(
     `    <string>${escapeXmlText(plan.baseDir)}</string>`,
     `    <key>${BOOT_SERVICE_UNIT_ENV}</key>`,
     `    <string>${BOOT_SERVICE_PLIST_FILE}</string>`,
+    ...(plan.environment ?? []).flatMap(([name, value]) => [
+      `    <key>${escapeXmlText(name)}</key>`,
+      `    <string>${escapeXmlText(value)}</string>`,
+    ]),
     `  </dict>`,
     `  <key>WorkingDirectory</key>`,
     `  <string>${escapeXmlText(options.homeDir)}</string>`,
@@ -522,15 +539,27 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   readonly logsDir: string;
   readonly cliVersion: string;
   readonly host?: BootServiceHost;
+  /** The build installing the service; tests override it. Decides the custom release policy. */
+  readonly runningVersion?: string;
 }) {
   const hostExecPath = yield* HostProcess.ExecutablePath;
   const platform = yield* HostProcess.Platform;
   const arch = yield* HostProcess.Architecture;
   const uid = yield* HostProcess.UserId;
   const httpClient = yield* HttpClient.HttpClient;
-  const releaseBaseUrl = Option.getOrUndefined(
-    yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option),
-  );
+  const passthroughEnvironment: Array<readonly [string, string]> = [];
+  for (const name of BOOT_SERVICE_PASSTHROUGH_ENV) {
+    const value = Option.getOrUndefined(yield* Config.String(name).pipe(Config.option))?.trim();
+    // Control characters cannot be represented safely in a unit or plist.
+    const printable = Array.from(value ?? "").every((character) => {
+      const code = character.charCodeAt(0);
+      return code >= 0x20 && code !== 0x7f;
+    });
+    if (value && printable) passthroughEnvironment.push([name, value]);
+  }
+  const releaseBaseUrl = passthroughEnvironment.find(
+    ([name]) => name === CLI_RELEASE_BASE_URL_ENV,
+  )?.[1];
   const homeDir = yield* Config.String("HOME").pipe(Config.withDefault(""));
   const installerPath = yield* Config.String("PATH").pipe(Config.withDefault(""));
   const fs = yield* FileSystem.FileSystem;
@@ -594,6 +623,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     baseDir: input.baseDir,
     logPath,
     unitPath,
+    ...(passthroughEnvironment.length === 0 ? {} : { environment: passthroughEnvironment }),
   };
 
   const requireManager = Effect.suspend(() =>
@@ -730,6 +760,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       platform,
       arch,
       releaseBaseUrl,
+      runningVersion: input.runningVersion ?? packageJson.version,
       validate: (runtime) =>
         runner
           .run({
