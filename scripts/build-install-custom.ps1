@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [switch]$BuildOnly,
-    [switch]$LinuxDesktop
+    [switch]$LinuxDesktop,
+    # A Linux runtime already built from this commit (t3-<version>-linux-x64.tar.gz);
+    # skips the Docker build.
+    [string]$LinuxRuntime
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +37,10 @@ $exitCode = 0
 try {
     $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
     Set-Location -LiteralPath $repoRoot
-    Get-Command git, vp, docker -ErrorAction Stop | Out-Null
+    # Package downloads go through Socket Firewall; it also proxies the
+    # packaging step's own production install.
+    Get-Command git, vp, sfw -ErrorAction Stop | Out-Null
+    if (-not $LinuxRuntime) { Get-Command docker -ErrorAction Stop | Out-Null }
     $version = (Get-Content -LiteralPath 'apps/server/package.json' -Raw | ConvertFrom-Json).version
     $outputRoot = Join-Path $repoRoot 'release/custom'
     $linuxOutput = Join-Path $outputRoot 'linux'
@@ -43,34 +49,41 @@ try {
     $env:CI = 'true'
     $env:T3CODE_DESKTOP_SKIP_BUILD = 'false'
 
-    Invoke-BuildStep 'Installing build dependencies...' 'vp' @('install','--frozen-lockfile')
-    Invoke-BuildStep 'Checking the Linux build environment...' 'docker' @('info','--format','{{.OSType}}')
-    $builderImage = 't3code-linux-builder:local'
-    $imageCheckPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        & docker image inspect $builderImage --format '{{.Id}}' *> $null
-        $builderExists = $LASTEXITCODE -eq 0
-    } finally {
-        $ErrorActionPreference = $imageCheckPreference
-    }
-    if (-not $builderExists) {
-        Invoke-BuildStep 'Preparing the Linux compiler image...' 'docker' @(
-            'build','--platform','linux/amd64','--tag',$builderImage,
-            (Join-Path $repoRoot 'scripts/linux-custom-builder')
+    Invoke-BuildStep 'Installing build dependencies...' 'sfw' @('pnpm','install','--frozen-lockfile')
+    if ($LinuxRuntime) {
+        $runtime = (Resolve-Path -LiteralPath $LinuxRuntime).Path
+        if ((Split-Path -Leaf $runtime) -ne "t3-$version-linux-x64.tar.gz") {
+            throw "The Linux runtime must be t3-$version-linux-x64.tar.gz. No installer was started."
+        }
+    } else {
+        Invoke-BuildStep 'Checking the Linux build environment...' 'docker' @('info','--format','{{.OSType}}')
+        $builderImage = 't3code-linux-builder:local'
+        $imageCheckPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & docker image inspect $builderImage --format '{{.Id}}' *> $null
+            $builderExists = $LASTEXITCODE -eq 0
+        } finally {
+            $ErrorActionPreference = $imageCheckPreference
+        }
+        if (-not $builderExists) {
+            Invoke-BuildStep 'Preparing the Linux compiler image...' 'docker' @(
+                'build','--platform','linux/amd64','--tag',$builderImage,
+                (Join-Path $repoRoot 'scripts/linux-custom-builder')
+            )
+        }
+        $linuxDesktopFlag = if ($LinuxDesktop) { '1' } else { '0' }
+        Invoke-BuildStep 'Building the matching Linux runtime...' 'docker' @(
+            'run','--rm','--platform','linux/amd64',
+            '--mount',"type=bind,source=$repoRoot,target=/source,readonly",
+            '--mount',"type=bind,source=$linuxOutput,target=/output",
+            '--mount','type=volume,source=t3code-linux-build-cache,target=/home/vp/.cache',
+            '--env','CI=true','--env',"BUILD_LINUX_DESKTOP=$linuxDesktopFlag",
+            '--entrypoint','bash',$builderImage,'/source/scripts/build-custom-linux.sh'
         )
-    }
-    $linuxDesktopFlag = if ($LinuxDesktop) { '1' } else { '0' }
-    Invoke-BuildStep 'Building the matching Linux runtime...' 'docker' @(
-        'run','--rm','--platform','linux/amd64',
-        '--mount',"type=bind,source=$repoRoot,target=/source,readonly",
-        '--mount',"type=bind,source=$linuxOutput,target=/output",
-        '--mount','type=volume,source=t3code-linux-build-cache,target=/home/vp/.cache',
-        '--env','CI=true','--env',"BUILD_LINUX_DESKTOP=$linuxDesktopFlag",
-        '--entrypoint','bash',$builderImage,'/source/scripts/build-custom-linux.sh'
-    )
 
-    $runtime = Join-Path $linuxOutput "t3-$version-linux-x64.tar.gz"
+        $runtime = Join-Path $linuxOutput "t3-$version-linux-x64.tar.gz"
+    }
     if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) {
         throw 'The matching Linux runtime was not produced. No installer was started.'
     }
@@ -85,8 +98,8 @@ try {
     $env:TMP = $buildTemp
     $env:TMPDIR = $buildTemp
 
-    Invoke-BuildStep 'Building the T3 Code (Custom) Windows installer...' 'vp' @(
-        'run','dist:desktop:artifact','--platform','win','--target','nsis',
+    Invoke-BuildStep 'Building the T3 Code (Custom) Windows installer...' 'sfw' @(
+        'vp','run','dist:desktop:artifact','--platform','win','--target','nsis',
         '--arch','x64','--build-version',$version,'--wsl-runtime',$runtime,
         '--output-dir',$windowsOutput
     )
