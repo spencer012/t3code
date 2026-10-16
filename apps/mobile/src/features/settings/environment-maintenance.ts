@@ -59,8 +59,21 @@ async function fetchReleases(url: string, accept: string, signal: AbortSignal) {
   return response;
 }
 
+/**
+ * Custom builds are published only to a private mirror the phone cannot
+ * reach, so the phone never looks for their updates on GitHub.
+ */
+export function canCheckEnvironmentUpdate(currentVersion: string) {
+  return cliReleaseChannelOf(currentVersion) !== "custom";
+}
+
+/** Preserve the host's release channel and never offer a downgrade. */
+
 export async function findEnvironmentUpdate(currentVersion: string, signal: AbortSignal) {
   const channel = cliReleaseChannelOf(currentVersion);
+  if (channel === "custom") {
+    throw new Error("Update custom builds from the desktop app or with t3 update on the host.");
+  }
   // Public release pages avoid the anonymous API quota shared by devices on the same network.
   const response = await fetchReleases(
     channel === "stable" ? `${CLI_RELEASES_PAGE_URL}/latest` : `${CLI_RELEASES_PAGE_URL}.atom`,

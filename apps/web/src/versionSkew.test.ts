@@ -85,6 +85,19 @@ describe("versionSkew", () => {
     },
   );
 
+  it("warns when a custom server is behind a custom client on the same base version", () => {
+    branding.APP_VERSION = "0.0.46-custom.2";
+    expect(resolveVersionMismatch("0.0.46-custom.1")).toMatchObject({
+      clientVersion: "0.0.46-custom.2",
+      serverVersion: "0.0.46-custom.1",
+    });
+    // custom.10 sorts after custom.9, and a server ahead needs nothing.
+    branding.APP_VERSION = "0.0.46-custom.10";
+    expect(resolveVersionMismatch("0.0.46-custom.9")).not.toBeNull();
+    expect(resolveVersionMismatch("0.0.46-custom.11")).toBeNull();
+    expect(resolveVersionMismatch("0.0.46-custom.10")).toBeNull();
+  });
+
   // regression: #7579 versions were compared as strings, not semver
   it("treats a nightly server built past the client as ahead, not skew", () => {
     expect(resolveVersionMismatch("0.0.35-nightly.20260818.1124")).toBeNull();

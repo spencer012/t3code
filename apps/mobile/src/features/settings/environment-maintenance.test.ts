@@ -1,7 +1,11 @@
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { canMaintainEnvironment, findEnvironmentUpdate } from "./environment-maintenance";
+import {
+  canCheckEnvironmentUpdate,
+  canMaintainEnvironment,
+  findEnvironmentUpdate,
+} from "./environment-maintenance";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -109,6 +113,15 @@ describe("environment release checks", () => {
     expect(await findEnvironmentUpdate("1.0.0-preview.20260923.1", signal)).toBe(
       "1.0.0-preview.20260924.3",
     );
+  });
+
+  it("never looks for custom build updates on GitHub", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(canCheckEnvironmentUpdate("0.0.46-custom.1")).toBe(false);
+    expect(canCheckEnvironmentUpdate("0.0.46")).toBe(true);
+    await expect(findEnvironmentUpdate("0.0.46-custom.1", signal)).rejects.toThrow("t3 update");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("reports failed checks instead of claiming the server is current", async () => {

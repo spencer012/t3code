@@ -8,6 +8,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
+import { isCustomCliVersion } from "@t3tools/shared/cliRelease";
 import type {
   PendingServiceUpdate,
   ServiceLauncherChildMessage,
@@ -659,6 +660,10 @@ export class Launcher {
     }
     if (!isExactServiceVersion(message.targetVersion)) {
       await reject("The requested target is not an exact version.");
+      return;
+    }
+    if (isCustomCliVersion(child.version) && !isCustomCliVersion(message.targetVersion)) {
+      await reject("A custom build only updates to another custom build.");
       return;
     }
     if (compareExactServiceVersions(message.targetVersion, child.version) <= 0) {
