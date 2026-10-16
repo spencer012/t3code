@@ -12,9 +12,10 @@ rsync -rlt --exclude='.git/' --exclude='node_modules/' --exclude='.pnpm-store/' 
 cd /home/vp/workspace/repo
 
 # Package downloads go through Socket Firewall. `vp install` only delegates to
-# pnpm, which sfw recognizes by name.
+# pnpm; the image's pnpm shim resolves the pinned version, and sfw recognizes
+# it by name.
 command -v sfw >/dev/null || { echo "sfw is missing from the builder image; rebuild it" >&2; exit 1; }
-vp env exec sfw pnpm install --frozen-lockfile \
+sfw pnpm install --frozen-lockfile \
   --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
 vp run build:desktop
 version=$(vp env exec node -p "JSON.parse(require('node:fs').readFileSync('apps/server/package.json', 'utf8')).version")
