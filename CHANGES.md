@@ -303,6 +303,10 @@ with `scripts/update-release-package-versions.ts`, and publish the Linux CLI to 
   Firewall: the image installs a pinned, checksummed `sfw`, and the build runs
   `sfw pnpm install`, `sfw cargo build`, and the archive step (whose own
   `vp install --prod` inherits sfw's proxy) under it.
+- `scripts/build-install-custom.ps1` does the same on Windows: `sfw pnpm
+install` and `sfw vp run dist:desktop:artifact`. `-LinuxRuntime <archive>`
+  reuses a Linux runtime already built from the same commit instead of
+  running the Docker build.
 
 When adopting upstream changes to release discovery or runtime installation,
 keep these refusals ahead of any download or cache reuse.
