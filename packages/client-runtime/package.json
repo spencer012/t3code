@@ -35,6 +35,10 @@
       "types": "./src/savedViews.ts",
       "default": "./src/savedViews.ts"
     },
+    "./saved-connection-request": {
+      "types": "./src/savedConnectionRequest.ts",
+      "default": "./src/savedConnectionRequest.ts"
+    },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"

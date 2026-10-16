@@ -1,3 +1,4 @@
+import { redactPairingData } from "../mcp/pairingPrivacy.ts";
 import {
   NodeId,
   CommandId,
@@ -291,7 +292,7 @@ export const layer: Layer.Layer<
             providerInstanceId: input.providerInstanceId,
             rawEventId: input.rawEventId,
             occurredAt,
-            payload: payloadInput.payload,
+            payload: redactPairingData(payloadInput.payload),
           }),
         );
       });

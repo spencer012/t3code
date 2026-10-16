@@ -628,6 +628,7 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
     case "fork":
     case "thread_created":
       return "zap";
+    case "saved_connection_request":
     case "secret_request":
       return "lock";
     case "feedback_request":
@@ -704,6 +705,13 @@ function itemSummary(
       return resolve(msg("Thread forked"));
     case "thread_created":
       return resolve(msg("Thread created"));
+    case "saved_connection_request":
+      return resolve(
+        msg("{operation} {label}. Open the desktop or web app to answer.", {
+          operation: item.operation,
+          label: item.label,
+        }),
+      );
     case "secret_request":
       return item.label;
     case "feedback_request":
@@ -775,6 +783,8 @@ function itemPreview(item: OrchestrationV2TurnItem, resolve: MessageResolver): s
     case "fork":
     case "thread_created":
       return item.targetThreadId;
+    case "saved_connection_request":
+      return item.connectionStatus;
     case "secret_request":
     case "link_request":
       return item.reason || null;
