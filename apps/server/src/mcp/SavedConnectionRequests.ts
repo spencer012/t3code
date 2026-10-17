@@ -19,7 +19,9 @@ import {
 import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -30,7 +32,8 @@ type Card = Extract<OrchestrationV2TurnItem, { type: "saved_connection_request" 
 type Memory = { pairingUrl?: string | undefined; claimId?: string | undefined; expiresAt: number };
 const TTL_MS = 15 * 60 * 1000;
 const CLAIM_TTL_MS = 2 * 60 * 1000;
-const open = (card: Card) =>
+const MAX_WAIT_MS = 120 * 1000;
+const open = (card: Pick<Card, "connectionStatus">) =>
   card.connectionStatus === "pending" || card.connectionStatus === "claimed";
 // MCP structuredContent must be JSON, so absent fields are omitted rather than set to undefined.
 const resultOf = (card: Card): SavedConnectionRequestResult => ({
@@ -80,6 +83,9 @@ const make = Effect.gen(function* () {
   const sink = yield* EventSink.EventSinkV2;
   const locks = yield* KeyedLock.make<TurnItemId>();
   const memory = new Map<TurnItemId, Memory>();
+  // Tool calls waiting for each card, and outcomes whose notification they replaced.
+  const waiters = new Map<TurnItemId, number>();
+  const owedWakes = new Set<TurnItemId>();
   const scope = yield* Effect.scope;
   yield* Effect.addFinalizer(() => Effect.sync(() => memory.clear()));
 
@@ -115,7 +121,7 @@ const make = Effect.gen(function* () {
         }),
       );
 
-  const record = (card: Card, wake = false) => {
+  const record = (card: Card, wake = false, commandSuffix = "") => {
     const result = resultOf(card);
     const description =
       card.connectionStatus === "failed"
@@ -126,7 +132,9 @@ const make = Effect.gen(function* () {
     return threads
       .dispatch({
         type: "saved_connection_request.record",
-        commandId: CommandId.make(`saved-connection:${card.id}:${card.connectionStatus}`),
+        commandId: CommandId.make(
+          `saved-connection:${card.id}:${card.connectionStatus}${commandSuffix}`,
+        ),
         threadId: card.threadId,
         runId: card.runId!,
         nodeId: card.nodeId!,
@@ -158,9 +166,77 @@ const make = Effect.gen(function* () {
       // Delete the secret before recording or waking, including when storage fails.
       memory.delete(card.id);
       const updated = { ...card, ...fields };
-      yield* record(updated, true);
+      // A waiting tool call returns the outcome itself; notify only if none is waiting.
+      const waiting = waiters.has(card.id);
+      if (waiting) owedWakes.add(card.id);
+      yield* record(updated, !waiting);
       return { request: resultOf(updated) };
     });
+
+  /**
+   * Wait (holding no lock) until the card leaves pending/claimed or the time runs out.
+   * Registration and the final read with deregistration each take the card lock, like
+   * `finish`, so an outcome either reaches this call or is notified. A call that ends
+   * without returning it (interrupt, failure) sends the notification it suppressed.
+   */
+  const awaitOutcome = (threadId: ThreadId, id: TurnItemId, waitMs: number) => {
+    let registered = false;
+    const leave = (delivered: boolean) =>
+      Effect.gen(function* () {
+        if (!registered) return;
+        registered = false;
+        const left = (waiters.get(id) ?? 1) - 1;
+        if (left > 0) {
+          waiters.set(id, left);
+          return;
+        }
+        waiters.delete(id);
+        if (!owedWakes.delete(id) || delivered) return;
+        const card = yield* readCard(threadId, id);
+        if (card !== undefined) yield* record(card, true, ":wake");
+      });
+    return Effect.gen(function* () {
+      const afterSequence = yield* threads.getThreadEventSequence(threadId);
+      yield* locks.withLock(
+        id,
+        Effect.sync(() => {
+          waiters.set(id, (waiters.get(id) ?? 0) + 1);
+          registered = true;
+        }),
+      );
+      const settled = (card: Card | undefined) => card === undefined || !open(card);
+      yield* Effect.gen(function* () {
+        if (settled(yield* readCard(threadId, id))) return;
+        yield* threads
+          .streamStoredEventsFrom({ threadId, afterSequence, eventType: "turn-item.updated" })
+          .pipe(
+            Stream.mapEffect(() => readCard(threadId, id)),
+            Stream.filter(settled),
+            Stream.runHead,
+          );
+      }).pipe(Effect.timeoutOption(Duration.millis(waitMs)));
+      return yield* locks.withLock(
+        id,
+        Effect.gen(function* () {
+          const card = yield* readCard(threadId, id);
+          yield* leave(card !== undefined && !open(card));
+          return card;
+        }),
+      );
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isSuccess(exit)
+          ? Effect.void
+          : locks
+              .withLock(id, leave(false))
+              .pipe(
+                Effect.catch(() =>
+                  Effect.logWarning("Could not notify a saved connection outcome."),
+                ),
+              ),
+      ),
+    );
+  };
 
   const request: SavedConnectionRequests["Service"]["request"] = (invocation, input) =>
     Effect.gen(function* () {
@@ -176,7 +252,7 @@ const make = Effect.gen(function* () {
           )
           .digest("hex")}`,
       );
-      return yield* locks.withLock(
+      const result = yield* locks.withLock(
         id,
         Effect.gen(function* () {
           const caller = yield* readCaller().pipe(
@@ -333,6 +409,13 @@ const make = Effect.gen(function* () {
           return resultOf(card);
         }),
       );
+      const waitMs =
+        input.waitMs !== undefined && Number.isFinite(input.waitMs)
+          ? Math.min(MAX_WAIT_MS, Math.max(0, Math.floor(input.waitMs)))
+          : 0;
+      if (waitMs === 0 || !open(result)) return result;
+      const settled = yield* awaitOutcome(threadId, id, waitMs).pipe(Effect.mapError(unavailable));
+      return settled === undefined ? result : resultOf(settled);
     });
 
   const respond: SavedConnectionRequests["Service"]["respond"] = (input) =>

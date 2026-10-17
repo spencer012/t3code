@@ -23,7 +23,11 @@ the desktop or web app.
 
 - Preserve immediate pending results and idempotent `clientRequestId` retries.
   Outcomes notify the asking agent through the normal queued message path, even
-  after its original turn ends. Do not wait inside an MCP tool for approval.
+  after its original turn ends. Claude threads only receive that notification
+  once the turn is over, so an optional `waitMs` (max 120 s, no lock held) lets
+  the call return the answer itself. A waiting call replaces the notification;
+  if it ends without returning the outcome (interrupt, failure), it sends the
+  notification it suppressed. Never wait by default.
 - Keep pairing URLs in server memory only. Cards, events, notifications, provider
   logs, and normalized tool-call inputs must contain no pairing token. Decline,
   completion, expiry, Stop, and archive discard it. A restarted server cannot
