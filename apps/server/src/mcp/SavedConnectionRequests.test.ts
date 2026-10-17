@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 import * as Stream from "effect/Stream";
@@ -199,6 +200,53 @@ describe("SavedConnectionRequests", () => {
       assert.isUndefined(result.pairingUrl);
       assert.equal((yield* requests.request(invocation, input)).connectionStatus, "declined");
       assert.notInclude(JSON.stringify(yield* orchestrator.getThreadProjection(threadId)), secret);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("waitMs returns the answer in the same call instead of notifying", () =>
+    Effect.gen(function* () {
+      const { orchestrator, requests } = yield* setup;
+      const waiting = yield* requests
+        .request(invocation, { ...input, waitMs: 60_000 })
+        .pipe(Effect.forkChild);
+      // Let the waiting call record its card and register before the answer.
+      for (let i = 0; i < 100; i++) yield* Effect.yieldNow;
+      const card = yield* requests.request(invocation, input);
+      assert.equal(card.connectionStatus, "pending");
+      yield* requests.respond({
+        threadId,
+        turnItemId: card.turnItemId,
+        answer: { type: "decline" },
+      });
+      assert.equal((yield* Fiber.join(waiting)).connectionStatus, "declined");
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(
+        projection.messages.filter((message) => message.notification !== undefined),
+        0,
+      );
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("waitMs returns pending when the wait ends and notifies the later answer", () =>
+    Effect.gen(function* () {
+      const { orchestrator, requests } = yield* setup;
+      const waiting = yield* requests
+        .request(invocation, { ...input, waitMs: 1_000 })
+        .pipe(Effect.forkChild);
+      for (let i = 0; i < 100; i++) yield* Effect.yieldNow;
+      yield* TestClock.adjust("2 seconds");
+      const card = yield* Fiber.join(waiting);
+      assert.equal(card.connectionStatus, "pending");
+      yield* requests.respond({
+        threadId,
+        turnItemId: card.turnItemId,
+        answer: { type: "decline" },
+      });
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(
+        projection.messages.filter((message) => message.notification !== undefined),
+        1,
+      );
     }).pipe(Effect.provide(testLayer)),
   );
 
