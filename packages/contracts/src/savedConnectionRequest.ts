@@ -56,6 +56,7 @@ export const SavedConnectionRequestInput = Schema.Union([
     pairingUrl: TrimmedNonEmptyString,
     label: Schema.optional(TrimmedNonEmptyString),
     clientRequestId: TrimmedNonEmptyString,
+    waitMs: Schema.optional(Schema.Number),
   }),
   Schema.Struct({
     operation: Schema.Literal("remove"),
@@ -63,6 +64,7 @@ export const SavedConnectionRequestInput = Schema.Union([
     label: Schema.optional(TrimmedNonEmptyString),
     host: Schema.optional(TrimmedNonEmptyString),
     clientRequestId: TrimmedNonEmptyString,
+    waitMs: Schema.optional(Schema.Number),
   }),
 ]);
 export type SavedConnectionRequestInput = typeof SavedConnectionRequestInput.Type;
