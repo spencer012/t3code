@@ -377,7 +377,6 @@ export function boundProviderEventForLogging(event: unknown): unknown {
   } catch {
     return { redacted: true };
   }
-
 }
 
 export const writeBatchedMessages = Effect.fnUntraced(function* (
