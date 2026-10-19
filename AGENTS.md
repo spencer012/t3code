@@ -170,6 +170,10 @@ Most code changes do not need an internal documentation change. Agents can read 
 
 ## Plans and work artifacts
 
+- For this fork, update `CHANGES.md` for each local customization. Record the intended behavior and priorities for resolving future merge conflicts. Keep plans and scratch notes out of it.
+- For this fork, when the developer requests a new feature, first rebase `custom` onto the latest `upstream/main` (the official T3 Code repository) unless they explicitly say not to. Follow the [Git workflow](CHANGES.md#git-workflow-for-this-checkout) in `CHANGES.md`. If the checkout is dirty, ask instead of rebasing.
+- This fork is published. Never commit personal or deployment details: names, email addresses, IP addresses (including private LAN ranges), hostnames, VM or container names, machine-specific paths, or paths into private repositories. Deployment-specific values come from environment variables or gitignored files at build and run time. Tests and docs use placeholders such as `mirror.example`, `example.com`, or `192.0.2.x`. Record deployments and their rollback details outside this repository, not in `CHANGES.md`.
+
 - Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material outside the worktree. `.plans/` is gitignored only as a safety net for legacy tooling.
 - Track active maintainer work in the GitHub issue or project item that owns it. External proposals follow `CONTRIBUTING.md` and belong in Ideas discussions.
 - A merged PR is the implementation record. Close or update its tracking item when the work lands; do not preserve a second checklist in the repository.
