@@ -148,12 +148,16 @@ function RecoveryActions({
     } catch (cause) {
       toastManager.add({
         type: "error",
-        title: action === "resume" ? "Could not change auto-resume" : "Could not snooze thread",
+        title:
+          action === "continuous"
+            ? "Could not change continuation"
+            : action === "resume"
+              ? "Could not change auto-resume"
+              : "Could not snooze thread",
         description: cause instanceof Error ? cause.message : "An error occurred.",
       });
     } finally {
       setPending(false);
-
     }
   }
   // Failures go to a toast: the actions column is auto-sized, so inline error
@@ -183,7 +187,6 @@ function RecoveryActions({
         </>
       ) : null}
       {continuousRecovery === null ? (
-
         <Button
           size="xs"
           variant="ghost"

@@ -699,7 +699,6 @@ export function HomeScreen(props: HomeScreenProps) {
   };
   const v2KeyExtractor = (item: ThreadListV2ListItem) => item.key;
 
-
   // FlatList/LegendList treat a changed extraData identity as "re-render every
   // visible row", so an inline object literal would invalidate all rows on
   // every HomeScreen render — and the minute clock must stay out of it for

@@ -27,7 +27,7 @@ const v2TableCount = Effect.gen(function* () {
 });
 
 describe("runMigrations", () => {
-  it.effect("upgrades the custom continuation ledger while preserving thread data", () =>
+  it.effect("upgrades the custom continuation ledger while preserving its timestamp", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 60 });
@@ -37,14 +37,18 @@ describe("runMigrations", () => {
         VALUES (61, 'ContinuousRecoveryIndex', '2026-10-08 00:00:00')
       `;
       const executed = yield* runMigrations();
-      assert.deepStrictEqual(executed, migrationManifest.filter(([id]) => id >= 61 && id < 65));
+      assert.deepStrictEqual(
+        executed,
+        migrationManifest.filter(([id]) => id >= 61 && id < 65),
+      );
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.deepStrictEqual(
         yield* sql`SELECT created_at FROM effect_sql_migrations WHERE migration_id = 65`,
         [{ created_at: "2026-10-08 00:00:00" }],
       );
       assert.equal(
-        (yield* sql`SELECT name FROM sqlite_master WHERE name = 'idx_v2_continuous_recovery'`).length,
+        (yield* sql`SELECT name FROM sqlite_master WHERE name = 'idx_v2_continuous_recovery'`)
+          .length,
         1,
       );
       yield* sql`

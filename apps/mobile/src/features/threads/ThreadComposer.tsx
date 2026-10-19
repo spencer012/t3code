@@ -561,45 +561,45 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   };
   const handleSend = async (followUp?: ActiveTurnComposerAction) => {
     if (voiceInput.blocksSubmission || pendingPastedTextAttachmentCountRef.current > 0) return;
-      if (autoContinueAction !== null) {
-        const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
-        if (inFlightThreadIdsRef.current.has(threadKey)) return;
-        inFlightThreadIdsRef.current.add(threadKey);
-        try {
-          if (props.connectionState !== "connected")
-            throw new Error("Connect to the environment to change automatic continuation.");
-          if (
-            autoContinueAction !== "status" &&
-            !readEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope)
-          ) {
-            throw new Error("You do not have permission to change this thread.");
-          }
-          if (props.selectedThread.continuousRecovery === undefined)
-            throw new Error("Update this environment's server to use automatic continuation.");
-          const title = await runAutoContinueCommand(
-            autoContinueAction,
-            props.selectedThread.continuousRecovery !== null,
-            async (enabled) => {
-              const result = await updateThreadMetadata({
-                environmentId: props.environmentId,
-                input: { threadId: props.selectedThread.id, continuousRecovery: enabled },
-              });
-              if (result._tag === "Failure") throw Cause.squash(result.cause);
-            },
-          );
-          if (getComposerDraftSnapshot(composerDraftKey).text === draftMessage)
-            setComposerDraftText(composerDraftKey, "");
-          Dialog.alert(title);
-        } catch (error) {
-          Dialog.alert(
-            "Could not change automatic continuation",
-            error instanceof Error ? error.message : "An error occurred.",
-          );
-        } finally {
-          inFlightThreadIdsRef.current.delete(threadKey);
+    if (autoContinueAction !== null) {
+      const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+      if (inFlightThreadIdsRef.current.has(threadKey)) return;
+      inFlightThreadIdsRef.current.add(threadKey);
+      try {
+        if (props.connectionState !== "connected")
+          throw new Error("Connect to the environment to change automatic continuation.");
+        if (
+          autoContinueAction !== "status" &&
+          !readEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope)
+        ) {
+          throw new Error("You do not have permission to change this thread.");
         }
-        return;
+        if (props.selectedThread.continuousRecovery === undefined)
+          throw new Error("Update this environment's server to use automatic continuation.");
+        const title = await runAutoContinueCommand(
+          autoContinueAction,
+          props.selectedThread.continuousRecovery !== null,
+          async (enabled) => {
+            const result = await updateThreadMetadata({
+              environmentId: props.environmentId,
+              input: { threadId: props.selectedThread.id, continuousRecovery: enabled },
+            });
+            if (result._tag === "Failure") throw Cause.squash(result.cause);
+          },
+        );
+        if (getComposerDraftSnapshot(composerDraftKey).text === draftMessage)
+          setComposerDraftText(composerDraftKey, "");
+        Dialog.alert(title);
+      } catch (error) {
+        Dialog.alert(
+          "Could not change automatic continuation",
+          error instanceof Error ? error.message : "An error occurred.",
+        );
+      } finally {
+        inFlightThreadIdsRef.current.delete(threadKey);
       }
+      return;
+    }
     if (usageLimitsOffered && isUsageLimitsCommand(draftMessage) && draftAttachments.length === 0) {
       if (openUsageLimits()) onChangeDraftMessage("");
       return;
@@ -623,7 +623,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       projectTitle: props.environmentLabel ?? "T3 Code",
     });
   };
-
 
   const lockedProviderInstanceId = props.canSwitchProvider
     ? undefined

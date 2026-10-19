@@ -263,29 +263,29 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                     ) : null}
                   </View>
                   {canCheckEnvironmentUpdate(config.environment.serverVersion) ? (
-                  <SettingsActionRow
-                    icon="arrow.clockwise"
-                    label="Check for updates"
-                    disabled={disabled}
-                    loading={pending === "check"}
-                    onPress={() => {
-                      if (disabled) return;
-                      void run("check", async () => {
-                        const controller = new AbortController();
-                        checkController.current = controller;
-                        const timeout = setTimeout(() => controller.abort(), 20_000);
-                        const fromVersion = config.environment.serverVersion;
-                        const result = await settlePromise(() =>
-                          findEnvironmentUpdate(fromVersion, controller.signal),
-                        );
-                        clearTimeout(timeout);
-                        checkController.current = null;
-                        // `run` owns the error message, so a failed lookup rethrows to it.
-                        if (AsyncResult.isFailure(result)) throw squashAtomCommandFailure(result);
-                        setRelease({ fromVersion, targetVersion: result.value });
-                      });
-                    }}
-                  />
+                    <SettingsActionRow
+                      icon="arrow.clockwise"
+                      label="Check for updates"
+                      disabled={disabled}
+                      loading={pending === "check"}
+                      onPress={() => {
+                        if (disabled) return;
+                        void run("check", async () => {
+                          const controller = new AbortController();
+                          checkController.current = controller;
+                          const timeout = setTimeout(() => controller.abort(), 20_000);
+                          const fromVersion = config.environment.serverVersion;
+                          const result = await settlePromise(() =>
+                            findEnvironmentUpdate(fromVersion, controller.signal),
+                          );
+                          clearTimeout(timeout);
+                          checkController.current = null;
+                          // `run` owns the error message, so a failed lookup rethrows to it.
+                          if (AsyncResult.isFailure(result)) throw squashAtomCommandFailure(result);
+                          setRelease({ fromVersion, targetVersion: result.value });
+                        });
+                      }}
+                    />
                   ) : null}
 
                   {checkedRelease?.targetVersion &&

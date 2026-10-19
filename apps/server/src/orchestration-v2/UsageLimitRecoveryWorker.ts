@@ -127,7 +127,7 @@ const makeSweep = Effect.gen(function* () {
           (shell.pendingBackgroundTasks?.length ?? 0) > 0)
       )
         continue;
-      const uuid = yield* crypto.randomUUIDv4;
+      const uuid = yield* crypto.randomUUIDv4();
       yield* threads
         .dispatch({
           type: "thread.continuation.check",

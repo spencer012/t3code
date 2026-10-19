@@ -1,7 +1,6 @@
 {
   "name": "@t3tools/desktop",
-  "version": "0.1.0",
-
+  "version": "0.1.0-custom.1",
   "private": true,
   "type": "module",
   "main": "dist-electron/boot.cjs",
@@ -44,5 +43,4 @@
     "vite-plus": "catalog:"
   },
   "productName": "T3 Code (Custom)"
-
 }

@@ -270,7 +270,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("keeps the Custom product name across release channels", () => {
     assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Custom)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Custom)");
-
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
@@ -1270,7 +1269,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             );
             assert.equal(yield* fs.readFileString(installed), `helper-${arch}`);
             // Windows does not represent POSIX executable permission bits.
-            if ((yield* HostProcessPlatform) !== "win32") {
+            if ((yield* HostProcess.Platform) !== "win32") {
               assert.equal((yield* fs.stat(installed)).mode & 0o777, 0o755);
             }
             if (backend === "hyprland")

@@ -69,7 +69,6 @@ import Migration0063 from "./Migrations/063_DropUnusedV1Projections.ts";
 import Migration0064 from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
 import Migration0065 from "./Migrations/065_ContinuousRecoveryIndex.ts";
 
-
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
@@ -137,7 +136,6 @@ export const migrationEntries = [
   [63, "DropUnusedV1Projections", Migration0063],
   [64, "CanonicalizeThreadPullRequestLinks", Migration0064],
   [65, "ContinuousRecoveryIndex", Migration0065],
-
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -206,19 +204,33 @@ const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecov
         const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
           SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id >= 61
         `;
-        if (!history.some((row) => row.migration_id === 61 && row.name === "ContinuousRecoveryIndex"))
+        if (
+          !history.some((row) => row.migration_id === 61 && row.name === "ContinuousRecoveryIndex")
+        )
           return [];
         if (history.length !== 1) {
           return yield* new Migrator.MigrationError({
             kind: "BadState",
-            message: "Cannot upgrade custom continuation migration with unexpected later migrations.",
+            message:
+              "Cannot upgrade custom continuation migration with unexpected later migrations.",
           });
         }
         yield* sql`UPDATE effect_sql_migrations SET migration_id = 65 WHERE migration_id = 61`;
         const executed: Array<readonly [number, string]> = [];
         for (const [id, name, migration] of migrationEntries) {
           if (id < 61 || id > 64) continue;
-          yield* migration;
+          yield* Effect.gen(function* () {
+            yield* migration;
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new Migrator.MigrationError({
+                  kind: "Failed",
+                  message: `Failed to apply custom upgrade migration ${id}_${name}.`,
+                  cause,
+                }),
+            ),
+          );
           yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
           executed.push([id, name]);
         }

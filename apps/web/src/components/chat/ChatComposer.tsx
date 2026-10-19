@@ -2798,7 +2798,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return [];
   })();
 
-
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
     ? `${composerSuggestionListId}:${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
@@ -3814,20 +3813,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       return;
     }
     if (item.type === "slash-command") {
-        if (item.command === AUTO_CONTINUE_COMMAND.name) {
-          const applied = applyPromptReplacement(
-            trigger.rangeStart,
-            trigger.rangeEnd,
-            "/auto-continue ",
-            {
-              expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-            },
-          );
-          if (applied) setComposerHighlightedItemId(null);
-          return;
-        }
+      if (item.command === AUTO_CONTINUE_COMMAND.name) {
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          trigger.rangeEnd,
+          "/auto-continue ",
+          {
+            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+          },
+        );
+        if (applied) setComposerHighlightedItemId(null);
+        return;
+      }
       if (item.command === "model") {
-
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
           focusEditorAfterReplace: false,
@@ -3997,23 +3995,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     dispatchMode?: ComposerDispatchMode,
     submissionIntent?: ComposerSubmissionIntent,
   ) => {
-      if (isAutoContinueCommand) {
-        event?.preventDefault();
-        const commandText = promptRef.current;
-        const targetKey = composerDraftTargetKey;
-        void onAutoContinueCommand(commandText).then((success) => {
-          if (
-            success &&
-            composerDraftTargetKeyRef.current === targetKey &&
-            promptRef.current === commandText
-          ) {
-            promptRef.current = "";
-            setComposerDraftPrompt(composerDraftTarget, "");
-            composerRef.current?.resetCursorState();
-          }
-        });
-        return;
-      }
+    if (isAutoContinueCommand) {
+      event?.preventDefault();
+      const commandText = promptRef.current;
+      const targetKey = composerDraftTargetKey;
+      void onAutoContinueCommand(commandText).then((success) => {
+        if (
+          success &&
+          composerDraftTargetKeyRef.current === targetKey &&
+          promptRef.current === commandText
+        ) {
+          promptRef.current = "";
+          setComposerDraftPrompt(composerDraftTarget, "");
+          composerRef.current?.resetCursorState();
+        }
+      });
+      return;
+    }
     if (
       noProviderAvailable ||
       isSendDisabled ||
@@ -4085,7 +4083,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   };
   const handleSubmitMessageStable = useStableCallback(handleSubmitMessage);
   const submitCitationAndSend = () => {
-
     submitComposer(
       undefined,
       resolveComposerDispatchMode({

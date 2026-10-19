@@ -318,3 +318,19 @@ install` and `sfw vp run dist:desktop:artifact`. `-LinuxRuntime <archive>`
 When adopting upstream changes to release discovery or runtime installation,
 keep these refusals ahead of any download or cache reuse.
 
+## Consolidated custom release
+
+Requested on 2026-10-18.
+
+Keep all local customizations on `local/continuous-usage-recovery`, rebased onto
+upstream main at `ab6be13d43`. This branch includes the private release channel,
+saved-connection request cards with JSON results and optional waiting, provider
+quota reads, continuous recovery, custom branding, and the SFW build wrappers.
+Use this branch for future custom releases instead of developing each feature on
+separate long-lived branches. The release version is `0.1.0-custom.1`.
+
+The old custom migration `61_ContinuousRecoveryIndex` now occupies ID 65.
+Upgrading that exact legacy ledger atomically preserves its timestamp at 65 and
+applies upstream migrations 61 through 64. Fresh and upstream databases use the
+normal manifest. Preserve this upgrade path and its rollback tests when future
+upstream migration IDs change.

@@ -1220,7 +1220,7 @@ export function NewTaskDraftScreen(props: {
       return;
     }
     if (draft.attachments.length === 0 && parseAutoContinueCommand(initialMessageText) !== null) {
-      Alert.alert("Automatic continuation", "Send /auto-continue inside an existing thread.");
+      Dialog.alert("Automatic continuation", "Send /auto-continue inside an existing thread.");
       return;
     }
     // T3's own limits command is answered by the thread composer; a new task would

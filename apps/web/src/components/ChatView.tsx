@@ -5506,7 +5506,6 @@ export default function ChatView(props: ChatViewProps) {
     ];
   })() as ComposerBannerStackItem[];
 
-
   // A launch context only overrides the drawer's cwd until the thread's own
   // location catches up, the drawer closes, or the thread changes.
   if (

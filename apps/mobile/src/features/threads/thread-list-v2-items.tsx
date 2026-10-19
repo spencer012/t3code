@@ -710,23 +710,23 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   // A submenu with the current option checked, matching web. This is a
   // per-thread setting, not a lifecycle verb.
   const continuousMenuItems: MenuAction[] =
-      onSetContinuousRecovery === undefined || thread.continuousRecovery === undefined
-        ? []
-        : [
-            {
-              id: "continuous-recovery",
-              title:
-                thread.continuousRecovery == null ? "Continue until finished" : "Stop continuing",
-              image: "arrow.clockwise",
-              attributes: {
-                disabled:
-                  thread.continuousRecovery == null &&
-                  (thread.latestRun == null ||
-                    thread.archivedAt !== null ||
-                    thread.settledOverride === "settled"),
-              },
+    onSetContinuousRecovery === undefined || thread.continuousRecovery === undefined
+      ? []
+      : [
+          {
+            id: "continuous-recovery",
+            title:
+              thread.continuousRecovery == null ? "Continue until finished" : "Stop continuing",
+            image: "arrow.clockwise",
+            attributes: {
+              disabled:
+                thread.continuousRecovery == null &&
+                (thread.latestRun == null ||
+                  thread.archivedAt !== null ||
+                  thread.settledOverride === "settled"),
             },
-          ];
+          },
+        ];
 
   const autoSettleMenuItems = useMemo<MenuAction[]>(
     () =>

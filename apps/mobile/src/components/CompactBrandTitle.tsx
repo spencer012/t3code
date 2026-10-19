@@ -9,7 +9,6 @@ import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { useAndroidControlSizing } from "./ui/useAndroidControlSizing";
 
-
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
   return Platform.isPad && !NATIVE_WORKSPACE_COLUMNS_SUPPORTED ? IPAD_HOME_TITLE_OFFSET : 0;
@@ -77,7 +76,6 @@ export function CompactBrandTitle(
           </Text>
         </View>
       ) : null}
-
     </View>
   );
 

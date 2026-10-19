@@ -421,21 +421,21 @@ export function useThreadListActions(): {
     return true;
   };
   const setContinuousRecovery = async (thread: EnvironmentThreadShell, enabled: boolean) => {
-      if (!checkThreadOperationPermission(thread, "Could not change continuation")) return false;
-      const result = await updateThreadMetadata({
-        environmentId: thread.environmentId,
-        input: { threadId: thread.id, continuousRecovery: enabled },
-      });
-      if (result._tag === "Failure") {
-        const error = Cause.squash(result.cause);
-        Dialog.alert(
-          "Could not change continuation",
-          error instanceof Error ? error.message : "An error occurred.",
-        );
-        return false;
-      }
-      return true;
-    };
+    if (!checkThreadOperationPermission(thread, "Could not change continuation")) return false;
+    const result = await updateThreadMetadata({
+      environmentId: thread.environmentId,
+      input: { threadId: thread.id, continuousRecovery: enabled },
+    });
+    if (result._tag === "Failure") {
+      const error = Cause.squash(result.cause);
+      Dialog.alert(
+        "Could not change continuation",
+        error instanceof Error ? error.message : "An error occurred.",
+      );
+      return false;
+    }
+    return true;
+  };
   const setThreadAutoSettle = async (thread: EnvironmentThreadShell, enabled: boolean) => {
     if (!environmentSupportsAutoSettleOptOut(thread.environmentId)) {
       Dialog.alert(
@@ -485,7 +485,6 @@ export function useThreadListActions(): {
       if (result._tag === "Failure") {
         const error = Cause.squash(result.cause);
         Dialog.alert(
-
           "Could not regenerate title",
           error instanceof Error && error.message.trim().length > 0
             ? error.message

@@ -62,7 +62,6 @@ const RELEASE_INDEX_MAX_PAGES = 10;
  */
 const resolveNewestCustomVersion = Effect.fn("cli.update.resolve_newest_custom")(function* (
   releaseBaseUrl: string | undefined,
-
 ) {
   if (releaseBaseUrl === undefined) {
     return yield* new CliUpdateError({
