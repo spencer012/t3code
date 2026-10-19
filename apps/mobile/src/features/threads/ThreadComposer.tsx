@@ -361,8 +361,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const { text: draftMessage, attachments: draftAttachments } = useComposerDraft(composerDraftKey);
   const queuedEdit = props.queuedEdit ?? null;
   const autoContinueAction =
-    queuedEdit === null && props.draftAttachments.length === 0
-      ? parseAutoContinueCommand(props.draftMessage)
+    queuedEdit === null && draftAttachments.length === 0
+      ? parseAutoContinueCommand(draftMessage)
       : null;
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -587,7 +587,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               if (result._tag === "Failure") throw Cause.squash(result.cause);
             },
           );
-          if (getComposerDraftSnapshot(composerDraftKey).text === props.draftMessage)
+          if (getComposerDraftSnapshot(composerDraftKey).text === draftMessage)
             setComposerDraftText(composerDraftKey, "");
           Dialog.alert(title);
         } catch (error) {

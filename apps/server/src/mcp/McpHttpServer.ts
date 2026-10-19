@@ -41,6 +41,8 @@ import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
+import * as ProviderUsageLimitsMcpService from "./ProviderUsageLimitsMcpService.ts";
+import * as UsageLimitsService from "../usage/UsageLimitsService.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
@@ -1062,4 +1064,8 @@ export const layer = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
-).pipe(Layer.provideMerge(layerMcpTransport));
+).pipe(
+  Layer.provide(ProviderUsageLimitsMcpService.layer),
+  Layer.provide(UsageLimitsService.layer),
+  Layer.provideMerge(layerMcpTransport),
+);

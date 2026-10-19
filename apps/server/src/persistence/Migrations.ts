@@ -191,6 +191,43 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
   });
 });
 
+// Custom releases used 61 before main assigned it to review guides. Move that
+// exact history to 65 and apply the intervening upstream migrations atomically.
+const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecoveryMigration")(
+  function* (throughId?: number) {
+    if (throughId !== undefined && throughId < 65) return [];
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const tables = yield* sql`
+          SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+        `;
+        if (tables.length === 0) return [];
+        const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+          SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id >= 61
+        `;
+        if (!history.some((row) => row.migration_id === 61 && row.name === "ContinuousRecoveryIndex"))
+          return [];
+        if (history.length !== 1) {
+          return yield* new Migrator.MigrationError({
+            kind: "BadState",
+            message: "Cannot upgrade custom continuation migration with unexpected later migrations.",
+          });
+        }
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = 65 WHERE migration_id = 61`;
+        const executed: Array<readonly [number, string]> = [];
+        for (const [id, name, migration] of migrationEntries) {
+          if (id < 61 || id > 64) continue;
+          yield* migration;
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
+          executed.push([id, name]);
+        }
+        return executed;
+      }),
+    );
+  },
+);
+
 const run = Migrator.make({});
 
 export interface RunMigrationsOptions {
@@ -203,11 +240,15 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
+  const customMigrations = includesV2
+    ? yield* reconcileContinuousRecoveryMigration(toMigrationInclusive)
+    : [];
   if (includesV2) {
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
   const executedMigrations = [
     ...previewMigrations,
+    ...customMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);

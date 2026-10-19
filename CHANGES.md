@@ -208,3 +208,30 @@ the server container. It passed isolated startup checks in the builder and targe
 container, and the live server reports `0.0.46` on the existing port, `3773`.
 The startup override still selects the local runtime. Keep `f25cceab9f` for
 rollback and preserve isolated verification before future upgrades.
+
+## Provider quota for manager agents
+
+Requested on 2026-10-10.
+
+Agents can call `t3_provider_usage_limits` to read session, weekly, and monthly
+quota for every provider instance and usage-limit hub account, so a manager
+agent can scale its subagents to the quota left. This adopts upstream PR #17219,
+which was still awaiting maintainer approval. If upstream merges it or a
+replacement, take upstream's version and re-apply only the behavior below.
+
+The local addition is the optional `maxAgeSeconds` input (minimum 60). Quota
+older than that is re-checked before the read, because background refreshes
+only run while a client is in the foreground and OpenCode never refreshes its Go
+quota on an interval. Only enabled instances that report quota are re-checked;
+unsupported and disabled instances are not. Without the input, the read stays
+cache-only. Keep OpenCode Go accounts covered: each OpenCode instance reads its
+own credentials and reports its own Go windows.
+
+Built on 2026-10-10 from uncommitted changes on top of `02f8838a5a`, so
+`release/custom/BUILD.json` names that base commit. Deployed to the server container on 2026-10-11 UTC as
+`local/provider-usage-1ed43865b9bf`. The target-container isolated startup
+check passed, all 61 migration entries matched the read-only live ledger,
+and the restarted server answered HTTP 200 with the new executable.
+The startup override still selects the local runtime. Keep
+`local/continuous-usage-recovery-b57656f12a` for rollback. The previous local
+packages remain in `release/custom/previous-0.0.46-02f8838a5a`.

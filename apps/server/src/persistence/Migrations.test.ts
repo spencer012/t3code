@@ -5,6 +5,7 @@ import * as Exit from "effect/Exit";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
+import ContinuousRecoveryIndex from "./Migrations/065_ContinuousRecoveryIndex.ts";
 
 const v2Migrations = migrationManifest.filter(([id]) => id >= 55);
 const newerMigrationId = Math.max(...migrationManifest.map(([id]) => id)) + 1;
@@ -26,6 +27,60 @@ const v2TableCount = Effect.gen(function* () {
 });
 
 describe("runMigrations", () => {
+  it.effect("upgrades the custom continuation ledger while preserving thread data", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 60 });
+      yield* ContinuousRecoveryIndex;
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name, created_at)
+        VALUES (61, 'ContinuousRecoveryIndex', '2026-10-08 00:00:00')
+      `;
+      const executed = yield* runMigrations();
+      assert.deepStrictEqual(executed, migrationManifest.filter(([id]) => id >= 61 && id < 65));
+      assert.deepStrictEqual(yield* history, migrationManifest);
+      assert.deepStrictEqual(
+        yield* sql`SELECT created_at FROM effect_sql_migrations WHERE migration_id = 65`,
+        [{ created_at: "2026-10-08 00:00:00" }],
+      );
+      assert.equal(
+        (yield* sql`SELECT name FROM sqlite_master WHERE name = 'idx_v2_continuous_recovery'`).length,
+        1,
+      );
+      yield* sql`
+        INSERT INTO pull_request_review_guides (host, repository, number, guide_json)
+        VALUES ('github.com', 'owner/repo', 1, '{}')
+      `;
+      assert.deepStrictEqual(yield* runMigrations(), []);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("rolls back the custom ledger remap when an upstream migration fails", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 60 });
+      yield* ContinuousRecoveryIndex;
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name) VALUES (61, 'ContinuousRecoveryIndex')
+      `;
+      const before = yield* history;
+      yield* sql`
+        CREATE TRIGGER fail_custom_upgrade BEFORE INSERT ON effect_sql_migrations
+        WHEN NEW.name = 'PullRequestReviewGuides'
+        BEGIN SELECT RAISE(ABORT, 'injected failure'); END
+      `;
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
+      assert.deepStrictEqual(yield* history, before);
+      assert.deepStrictEqual(
+        yield* sql`SELECT name FROM sqlite_master WHERE name = 'pull_request_review_guides'`,
+        [],
+      );
+      yield* sql`DROP TRIGGER fail_custom_upgrade`;
+      yield* runMigrations();
+      assert.deepStrictEqual(yield* history, migrationManifest);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect("migrates a fresh database through the whole manifest", () =>
     Effect.gen(function* () {
       yield* runMigrations();
