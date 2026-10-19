@@ -138,28 +138,19 @@ Do not automatically rebase a dirty checkout or chase every upstream commit whil
 a feature is being implemented. Do not resolve conflicts by blindly selecting
 all local or all upstream versions.
 
-## Container server installation
+## Custom server upgrades
 
 Requested on 2026-10-08.
 
-Install the custom server in the server container without inspecting its active work.
-The custom Linux CLI archive replaces the nightly server.
-It uses the existing T3 home and connection configuration.
+The custom Linux CLI archive can replace a deployed server's runtime without
+inspecting its active work. It keeps the existing T3 home and connection
+configuration. Keep the previous runtime available for rollback.
 
-Build directories live under the container's runtime cache.
-`local/current` selects the installed build, and `bin/t3` points to that selection. Keep the
-previous npm runtime available for rollback. The original launcher metadata and
-container startup script are backed up under `local/backups/before-74b88c249e`.
-
-The container's startup script now honors `local/current/t3` before its
-configured nightly updater. Preserve this override when rebuilding the container
-image so restarts and the nightly updater keep the custom behavior.
-
-Installation checks may inspect server code, service metadata, and the read-only
+Upgrade checks may inspect server code, service metadata, and the read-only
 database migration ledger. Do not inspect working files, conversations, or server
 logs to perform an upgrade. Check migration IDs before switching builds and test
-the replacement with an isolated data home. The deployed build passed those
-checks and responded on the existing port, `3773`.
+the replacement with an isolated data home. Install locations, startup overrides,
+and deployment history for specific machines are kept outside this repository.
 
 ## Custom client identity and installer launcher
 
@@ -202,8 +193,7 @@ Corrected on 2026-10-09.
 
 Keep the thread-title and sidebar menus able to start or stop continuous recovery
 when the usage-limit banner is absent. This also lets the user re-enable a flag
-cleared by an older buggy build. The corrected server build `f25cceab9f` is deployed
-in the server container, with the prior runtime retained for rollback. Apply the same operate permission and existing-turn
+cleared by an older buggy build. Apply the same operate permission and existing-turn
 guards across web, desktop, and mobile. Preserve explicit Stop/archive/settle
 cancellation and queue delivery. Do not re-enable previously cleared flags without
 a user action.
@@ -226,13 +216,6 @@ existing-turn validation, and old-server compatibility checks. Disabling the
 mode leaves current agents and consoles running. This remains a mode for the
 current task, with the existing completion and explicit cancellation rules.
 
-The matching Windows and Linux packages were rebuilt from `f25cceab9f`, and
-the container now serves that build. Its previous runtime is retained. The
-container had been recreated since the earlier deployment, preserving the
-runtime cache while restoring the upstream startup script. The local-runtime
-override was restored, with that startup script backed up beside it. Verify both the startup
-override and the running executable after each upgrade or container recreation.
-
 ## Release version and OpenCode 2 update
 
 Requested on 2026-10-10.
@@ -243,12 +226,6 @@ and clients report the expected release for compatibility. Keep server, web,
 desktop, and contracts versions aligned through the release version script.
 Adopt newer upstream release versions during future updates instead of keeping
 this version pinned. Preserve the custom identity and continuation behavior.
-
-The Linux CLI archive from `b57656f12a` is installed and running in
-the server container. It passed isolated startup checks in the builder and target
-container, and the live server reports `0.0.46` on the existing port, `3773`.
-The startup override still selects the local runtime. Keep `f25cceab9f` for
-rollback and preserve isolated verification before future upgrades.
 
 ## Provider quota for manager agents
 
@@ -268,23 +245,15 @@ unsupported and disabled instances are not. Without the input, the read stays
 cache-only. Keep OpenCode Go accounts covered: each OpenCode instance reads its
 own credentials and reports its own Go windows.
 
-Built on 2026-10-10 from uncommitted changes on top of `02f8838a5a`, so
-`release/custom/BUILD.json` names that base commit. Deployed to the server container on 2026-10-11 UTC as
-`local/provider-usage-1ed43865b9bf`. The target-container isolated startup
-check passed, all 61 migration entries matched the read-only live ledger,
-and the restarted server answered HTTP 200 with the new executable.
-The startup override still selects the local runtime. Keep
-`local/continuous-usage-recovery-b57656f12a` for rollback. The previous local
-packages remain in `release/custom/previous-0.0.46-02f8838a5a`.
-
 ## Custom release channel
 
 Requested on 2026-10-15.
 
 Custom builds are versioned `X.Y.Z-custom.N` and are published only to a private
-mirror (`T3CODE_RELEASE_BASE_URL`), whose
-`latest-custom` file names the newest one. Bump all release packages together
-with `scripts/update-release-package-versions.ts`, and publish the Linux CLI to the mirror.
+mirror named by `T3CODE_RELEASE_BASE_URL`, whose `latest-custom` file names the
+newest one. Bump all release packages together with
+`scripts/update-release-package-versions.ts`. The mirror's address, certificate,
+and publishing script are deployment details kept outside this repository.
 
 - A custom build installs only other custom builds, and only from the mirror.
   It never asks GitHub. Without the mirror variable, `t3 update`, remote server
@@ -341,3 +310,13 @@ an unsupported callback made the compiler silently skip the whole view, and its
 render-time timeline/setup state guards then looped on fresh object references
 before startup could display a draft. The compiler regression test checks the
 actual ChatView module for diagnostics and generated memoization.
+
+## Personal details stay out of the fork
+
+Requested on 2026-10-19.
+
+`AGENTS.md` forbids committing personal or deployment details, so this branch
+can be published. Keep that rule when merging upstream changes to `AGENTS.md`.
+This branch's history was rewritten on 2026-10-19 to remove such details. Local
+branches created before then, including `backup/*`, still contain them and must
+not be pushed.
