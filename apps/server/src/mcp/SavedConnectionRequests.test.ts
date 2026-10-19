@@ -22,6 +22,8 @@ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
 import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -50,6 +52,8 @@ const adapter = {
 } as ProviderAdapter.ProviderAdapterV2["Service"];
 const database = Sqlite.layerMemory;
 const orchestration = ThreadManagement.layer.pipe(
+  Layer.provide(ServerSettings.layerTest()),
+  Layer.provide(CommandReceiptStore.layer.pipe(Layer.provide(database))),
   Layer.provideMerge(
     Layer.mergeAll(
       database,

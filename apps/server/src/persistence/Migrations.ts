@@ -242,7 +242,8 @@ const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecov
         if ((later[0]?.count ?? 0) > 0) {
           return yield* new Migrator.MigrationError({
             kind: "BadState",
-            message: "Cannot upgrade custom continuation migration with unexpected later migrations.",
+            message:
+              "Cannot upgrade custom continuation migration with unexpected later migrations.",
           });
         }
         yield* sql`
@@ -253,7 +254,18 @@ const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecov
         const executed: Array<readonly [number, string]> = [];
         for (const [id, name, migration] of migrationEntries) {
           if (id < legacyId || id >= CONTINUOUS_RECOVERY_MIGRATION_ID) continue;
-          yield* migration;
+          yield* Effect.gen(function* () {
+            yield* migration;
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new Migrator.MigrationError({
+                  kind: "Failed",
+                  message: `Failed to apply custom upgrade migration ${id}_${name}.`,
+                  cause,
+                }),
+            ),
+          );
           yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
           executed.push([id, name]);
         }
