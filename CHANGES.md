@@ -109,31 +109,33 @@ queue delivery, and persistence.
 
 ## Git workflow for this checkout
 
-The upstream project currently uses the `origin` remote. Local customizations live
-on `local/continuous-usage-recovery`, separate from upstream `main`. This branch
-started from the fetched `origin/main` tip. No upstream history was rewritten.
+`upstream` is the official project and `origin` is the public fork. Local
+customizations live on `custom`, published as `origin/custom`. `main` mirrors
+`upstream/main` with no local changes, so the fork's **Sync fork** button keeps
+working and branches for upstream pull requests can start from it.
 
 Repository-local settings use fast-forward-only pulls, prune obsolete remote
 tracking branches on fetch, and remember conflict resolutions with `rerere`.
 Review reused resolutions before accepting them.
 
 Keep changes in small commits. Fetch whenever useful, then integrate at deliberate
-checkpoints with a clean working tree. For this private branch:
+checkpoints with a clean working tree:
 
 ```sh
-git fetch origin
+git fetch upstream
 git branch backup/before-update
-git rebase origin/main
+git rebase upstream/main
+git push --force-with-lease origin custom
 ```
 
-Use a new backup name each time. Resolve conflicts according to this file, stage
+Use a new backup name each time, and keep backups local. Resolve conflicts according to this file, stage
 the resolved files, and run `git rebase --continue`. Use `git rebase --abort` to
 return to the state before that rebase. Run the focused checks for the affected
 changes after integrating.
 
-A branch shared with other people should merge `origin/main` instead of rewriting
-their published history. If a personal fork is added later, give the official
-project an `upstream` remote and use `upstream/main` as the integration base.
+Only this checkout pushes `custom`, so rebasing its published history is fine;
+`--force-with-lease` refuses to overwrite commits pushed from elsewhere. If other
+people start building on `custom`, merge `upstream/main` instead of rebasing.
 Do not automatically rebase a dirty checkout or chase every upstream commit while
 a feature is being implemented. Do not resolve conflicts by blindly selecting
 all local or all upstream versions.
@@ -291,7 +293,7 @@ keep these refusals ahead of any download or cache reuse.
 
 Requested on 2026-10-18.
 
-Keep all local customizations on `local/continuous-usage-recovery`, rebased onto
+Keep all local customizations on `custom`, rebased onto
 upstream main at `ab6be13d43`. This branch includes the private release channel,
 saved-connection request cards with JSON results and optional waiting, provider
 quota reads, continuous recovery, custom branding, and the SFW build wrappers.
