@@ -69,6 +69,8 @@ import * as FeedbackHandlers from "./toolkits/feedback/handlers.ts";
 import { FeedbackToolkit } from "./toolkits/feedback/tools.ts";
 import * as Feedback from "../feedback/FeedbackService.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
+import * as ProviderUsageLimitsMcpService from "./ProviderUsageLimitsMcpService.ts";
+import * as UsageLimitsService from "../usage/UsageLimitsService.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import { ThemeToolkit } from "./toolkits/theme/tools.ts";
 import * as ThemeHandlers from "./toolkits/theme/handlers.ts";
@@ -1560,7 +1562,7 @@ export const layerTools = Layer.mergeAll(
   layerDeviceToolkit,
   layerHtmlToolkit,
   layerMessageToolkit,
-);
+).pipe(Layer.provide(ProviderUsageLimitsMcpService.layer), Layer.provide(UsageLimitsService.layer));
 
 const layerToolExposure = Layer.effect(
   McpToolExposure.McpToolExposure,
