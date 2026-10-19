@@ -77,7 +77,6 @@ export function CompactBrandTitle(
           </Text>
         </View>
       ) : null}
-
     </View>
   );
 
