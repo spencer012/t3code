@@ -327,10 +327,17 @@ upstream main at `ab6be13d43`. This branch includes the private release channel,
 saved-connection request cards with JSON results and optional waiting, provider
 quota reads, continuous recovery, custom branding, and the SFW build wrappers.
 Use this branch for future custom releases instead of developing each feature on
-separate long-lived branches. The release version is `0.1.0-custom.1`.
+separate long-lived branches. The release version is `0.1.0-custom.2`.
 
 The old custom migration `61_ContinuousRecoveryIndex` now occupies ID 65.
 Upgrading that exact legacy ledger atomically preserves its timestamp at 65 and
 applies upstream migrations 61 through 64. Fresh and upstream databases use the
 normal manifest. Preserve this upgrade path and its rollback tests when future
 upstream migration IDs change.
+
+The web/desktop chat view must remain eligible for React compiler memoization.
+Keep continuation command try/catch/finally handling outside the component:
+an unsupported callback made the compiler silently skip the whole view, and its
+render-time timeline/setup state guards then looped on fresh object references
+before startup could display a draft. The compiler regression test checks the
+actual ChatView module for diagnostics and generated memoization.

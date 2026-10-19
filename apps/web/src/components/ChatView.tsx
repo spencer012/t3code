@@ -1041,6 +1041,30 @@ function makeModelDisabledReason(
   };
 }
 
+// The React compiler cannot lower finally blocks inside a component's callbacks.
+async function runAutoContinueWithFeedback(
+  inFlight: Set<string>,
+  threadKey: string,
+  run: () => Promise<string>,
+) {
+  if (inFlight.has(threadKey)) return false;
+  inFlight.add(threadKey);
+  try {
+    const title = await run();
+    toastManager.add({ type: "success", title });
+    return true;
+  } catch (error) {
+    toastManager.add({
+      type: "error",
+      title: "Could not change automatic continuation",
+      description: error instanceof Error ? error.message : "An error occurred.",
+    });
+    return false;
+  } finally {
+    inFlight.delete(threadKey);
+  }
+}
+
 export default function ChatView(props: ChatViewProps) {
   const {
     environmentId,
@@ -5357,38 +5381,30 @@ export default function ChatView(props: ChatViewProps) {
   const autoContinueInFlightRef = useRef(new Set<string>());
   const onAutoContinueCommand = async (text: string) => {
     const action = parseAutoContinueCommand(text);
-    if (action === null || autoContinueInFlightRef.current.has(routeThreadKey)) return false;
-    autoContinueInFlightRef.current.add(routeThreadKey);
-    try {
-      if (!activeThreadShell || !isServerThread)
-        throw new Error("Open an existing thread to change automatic continuation.");
-      if (
-        action !== "status" &&
-        !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
-      ) {
-        throw new Error("You do not have permission to change this thread.");
-      }
-      if (activeEnvironmentUnavailable)
-        throw new Error("Connect to the environment to change automatic continuation.");
-      if (activeThreadShell.continuousRecovery === undefined)
-        throw new Error("Update this environment's server to use automatic continuation.");
-      const title = await runAutoContinueCommand(
-        action,
-        activeThreadShell.continuousRecovery !== null,
-        changeContinuousRecovery,
-      );
-      toastManager.add({ type: "success", title });
-      return true;
-    } catch (error) {
-      toastManager.add({
-        type: "error",
-        title: "Could not change automatic continuation",
-        description: error instanceof Error ? error.message : "An error occurred.",
-      });
-      return false;
-    } finally {
-      autoContinueInFlightRef.current.delete(routeThreadKey);
-    }
+    if (action === null) return false;
+    return runAutoContinueWithFeedback(
+      autoContinueInFlightRef.current,
+      routeThreadKey,
+      async () => {
+        if (!activeThreadShell || !isServerThread)
+          throw new Error("Open an existing thread to change automatic continuation.");
+        if (
+          action !== "status" &&
+          !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
+        ) {
+          throw new Error("You do not have permission to change this thread.");
+        }
+        if (activeEnvironmentUnavailable)
+          throw new Error("Connect to the environment to change automatic continuation.");
+        if (activeThreadShell.continuousRecovery === undefined)
+          throw new Error("Update this environment's server to use automatic continuation.");
+        return runAutoContinueCommand(
+          action,
+          activeThreadShell.continuousRecovery !== null,
+          changeContinuousRecovery,
+        );
+      },
+    );
   };
 
   const changeContinuousRecovery = async (enabled: boolean) => {
