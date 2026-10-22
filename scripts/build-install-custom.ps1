@@ -31,6 +31,7 @@ $previousTmp = $env:TMP
 $previousTmpDir = $env:TMPDIR
 $previousCI = $env:CI
 $previousSkipBuild = $env:T3CODE_DESKTOP_SKIP_BUILD
+$previousRegistry = $env:pnpm_config_registry
 $buildTemp = $null
 $exitCode = 0
 
@@ -48,6 +49,9 @@ try {
     New-Item -ItemType Directory -Path $linuxOutput,$windowsOutput -Force | Out-Null
     $env:CI = 'true'
     $env:T3CODE_DESKTOP_SKIP_BUILD = 'false'
+    # pnpm 12 rejects a plain-HTTP registry from user config (405), including in
+    # the packaging step's own production install, and ignores npm_config_*.
+    $env:pnpm_config_registry = 'https://registry.npmjs.org/'
 
     Invoke-BuildStep 'Installing build dependencies...' 'sfw' @('pnpm','install','--frozen-lockfile')
     if ($LinuxRuntime) {
@@ -151,6 +155,7 @@ try {
     $env:TMPDIR = $previousTmpDir
     $env:CI = $previousCI
     $env:T3CODE_DESKTOP_SKIP_BUILD = $previousSkipBuild
+    $env:pnpm_config_registry = $previousRegistry
     if ($buildTemp -and (Test-Path -LiteralPath $buildTemp)) {
         $expectedTemp = [IO.Path]::GetFullPath($buildTemp)
         $resolvedTemp = (Resolve-Path -LiteralPath $buildTemp).Path
