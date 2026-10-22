@@ -28,7 +28,7 @@ if [ "$BUILD_LINUX_DESKTOP" = "1" ]; then
     --skip-build --output-dir /home/vp/artifacts
 fi
 
-VP_NODE_VERSION=26.8.2 vp env exec node apps/server/scripts/cli.ts build-exe
+vp env exec node apps/server/scripts/cli.ts build-exe
 mkdir -p /home/vp/cli-resource-monitor/linux-x64
 cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor \
   /home/vp/cli-resource-monitor/linux-x64/
