@@ -144,7 +144,7 @@ export function acceptsTrackSwitchRelease(
 }
 
 /** File at the mirror root naming the newest published custom version. */
-export const CLI_RELEASE_LATEST_CUSTOM_FILE = "latest-custom";
+const CLI_RELEASE_LATEST_CUSTOM_FILE = "latest-custom";
 
 export function cliReleaseLatestCustomUrl(baseUrl: string): string {
   return `${baseUrl.trim().replace(/\/+$/, "")}/${CLI_RELEASE_LATEST_CUSTOM_FILE}`;

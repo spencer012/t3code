@@ -1240,7 +1240,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
     registrations,
   }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
-export const layerSavedConnectionsToolkit = toolkitRegistration(
+const layerSavedConnectionsToolkit = toolkitRegistration(
   SavedConnectionsToolkit,
   SavedConnectionsHandlers.layer,
 );
@@ -1259,9 +1259,6 @@ export const layerTools = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
-).pipe(
-  Layer.provide(ProviderUsageLimitsMcpService.layer),
-  Layer.provide(UsageLimitsService.layer),
-);
+).pipe(Layer.provide(ProviderUsageLimitsMcpService.layer), Layer.provide(UsageLimitsService.layer));
 
 export const layer = layerMcpTransport(layerTools);

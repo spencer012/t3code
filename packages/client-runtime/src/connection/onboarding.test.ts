@@ -675,7 +675,7 @@ it.effect("saves an optional pairing label in both the target and profile", () =
     const registration = yield* preparePairingRegistration({
       pairingUrl: "https://foo.test/pair#token=test",
       label: "foo",
-    }).pipe(Effect.provide(Layer.mergeAll(layerClientPresentation, layerPairingHttp(calls))));
+    }).pipe(Effect.provide(layerPairingOnboarding(undefined, calls)));
     expect(registration.target.label).toBe("foo");
     expect(registration.profile.label).toBe("foo");
     expect(registration.credential.token).toBe("bearer-token");

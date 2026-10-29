@@ -15,5 +15,5 @@ describe("ChatView production compilation", () => {
     expect(compiled.code).toMatch(
       /export default function ChatView\(props\) \{\s*const \$ = _c\(\d+\);/,
     );
-  }, 30_000);
+  });
 });

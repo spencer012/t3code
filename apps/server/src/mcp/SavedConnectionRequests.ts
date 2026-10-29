@@ -161,17 +161,19 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError(() => new SavedConnectionRequestError({ reason: "record_failed" })));
   };
 
-  const finish = (card: Card, fields: Partial<SavedConnectionRequestResult>) =>
-    Effect.gen(function* () {
-      // Delete the secret before recording or waking, including when storage fails.
-      memory.delete(card.id);
-      const updated = { ...card, ...fields };
-      // A waiting tool call returns the outcome itself; notify only if none is waiting.
-      const waiting = waiters.has(card.id);
-      if (waiting) owedWakes.add(card.id);
-      yield* record(updated, !waiting);
-      return { request: resultOf(updated) };
-    });
+  const finish = Effect.fn("SavedConnectionRequests.finish")(function* (
+    card: Card,
+    fields: Partial<SavedConnectionRequestResult>,
+  ) {
+    // Delete the secret before recording or waking, including when storage fails.
+    memory.delete(card.id);
+    const updated = { ...card, ...fields };
+    // A waiting tool call returns the outcome itself; notify only if none is waiting.
+    const waiting = waiters.has(card.id);
+    if (waiting) owedWakes.add(card.id);
+    yield* record(updated, !waiting);
+    return { request: resultOf(updated) };
+  });
 
   /**
    * Wait (holding no lock) until the card leaves pending/claimed or the time runs out.
@@ -181,20 +183,19 @@ const make = Effect.gen(function* () {
    */
   const awaitOutcome = (threadId: ThreadId, id: TurnItemId, waitMs: number) => {
     let registered = false;
-    const leave = (delivered: boolean) =>
-      Effect.gen(function* () {
-        if (!registered) return;
-        registered = false;
-        const left = (waiters.get(id) ?? 1) - 1;
-        if (left > 0) {
-          waiters.set(id, left);
-          return;
-        }
-        waiters.delete(id);
-        if (!owedWakes.delete(id) || delivered) return;
-        const card = yield* readCard(threadId, id);
-        if (card !== undefined) yield* record(card, true, ":wake");
-      });
+    const leave = Effect.fn("SavedConnectionRequests.leave")(function* (delivered: boolean) {
+      if (!registered) return;
+      registered = false;
+      const left = (waiters.get(id) ?? 1) - 1;
+      if (left > 0) {
+        waiters.set(id, left);
+        return;
+      }
+      waiters.delete(id);
+      if (!owedWakes.delete(id) || delivered) return;
+      const card = yield* readCard(threadId, id);
+      if (card !== undefined) yield* record(card, true, ":wake");
+    });
     return Effect.gen(function* () {
       const afterSequence = yield* threads.getThreadEventSequence(threadId);
       yield* locks.withLock(
@@ -238,185 +239,185 @@ const make = Effect.gen(function* () {
     );
   };
 
-  const request: SavedConnectionRequests["Service"]["request"] = (invocation, input) =>
-    Effect.gen(function* () {
-      const threadScope = yield* McpInvocationContext.requireThreadScope(
-        invocation,
-        "Saved connection requests",
-      );
-      const threadId = threadScope.thread.threadId;
-      const id = TurnItemId.make(
-        `saved-connection:${NodeCrypto.createHash("sha256")
-          .update(
-            `${threadId.length}:${threadId}${invocation.requestNamespace.length}:${invocation.requestNamespace}${input.clientRequestId.length}:${input.clientRequestId}`,
-          )
-          .digest("hex")}`,
-      );
-      const result = yield* locks.withLock(
-        id,
-        Effect.gen(function* () {
-          const caller = yield* readCaller().pipe(
-            Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
-            Effect.provideService(ThreadManagement.ThreadManagementService, threads),
-          );
-          yield* assertLiveCaller(caller);
-          yield* assertFullAccess(
-            caller,
-            "Saved connection requests require a live full-access/default calling thread.",
-          );
-          const existing = yield* readCard(threadId, id).pipe(Effect.mapError(unavailable));
-          if (existing !== undefined) return resultOf(existing);
+  const request: SavedConnectionRequests["Service"]["request"] = Effect.fn(
+    "SavedConnectionRequests.request",
+  )(function* (invocation, input) {
+    const threadScope = yield* McpInvocationContext.requireThreadScope(
+      invocation,
+      "Saved connection requests",
+    );
+    const threadId = threadScope.thread.threadId;
+    const id = TurnItemId.make(
+      `saved-connection:${NodeCrypto.createHash("sha256")
+        .update(
+          `${threadId.length}:${threadId}${invocation.requestNamespace.length}:${invocation.requestNamespace}${input.clientRequestId.length}:${input.clientRequestId}`,
+        )
+        .digest("hex")}`,
+    );
+    const result = yield* locks.withLock(
+      id,
+      Effect.gen(function* () {
+        const caller = yield* readCaller().pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+          Effect.provideService(ThreadManagement.ThreadManagementService, threads),
+        );
+        yield* assertLiveCaller(caller);
+        yield* assertFullAccess(
+          caller,
+          "Saved connection requests require a live full-access/default calling thread.",
+        );
+        const existing = yield* readCard(threadId, id).pipe(Effect.mapError(unavailable));
+        if (existing !== undefined) return resultOf(existing);
+        if (
+          input.clientRequestId.trim().length === 0 ||
+          input.clientRequestId.length > 200 ||
+          (input.operation === "remove" &&
+            input.environmentId !== undefined &&
+            !displayLabel(input.environmentId)) ||
+          (input.label !== undefined && !displayLabel(input.label))
+        )
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              "Use a short label and clientRequestId. Do not put URLs or secrets in display fields.",
+          });
+        let host: string | undefined;
+        let pairingUrl: string | undefined;
+        if (input.operation === "add") {
+          const parsed = yield* Effect.try({
+            try: () => new URL(input.pairingUrl),
+            catch: unavailable,
+          });
+          const token = new URLSearchParams(parsed.hash.slice(1));
           if (
-            input.clientRequestId.trim().length === 0 ||
-            input.clientRequestId.length > 200 ||
-            (input.operation === "remove" &&
-              input.environmentId !== undefined &&
-              !displayLabel(input.environmentId)) ||
-            (input.label !== undefined && !displayLabel(input.label))
+            !["http:", "https:"].includes(parsed.protocol) ||
+            parsed.username ||
+            parsed.password ||
+            parsed.pathname !== "/pair" ||
+            parsed.search ||
+            !token.get("token") ||
+            [...token.keys()].some((key) => key !== "token") ||
+            token.getAll("token").length !== 1 ||
+            input.pairingUrl.length > 8192
           )
             return yield* new OrchestratorMcpFailure({
               code: "invalid_request",
-              message:
-                "Use a short label and clientRequestId. Do not put URLs or secrets in display fields.",
+              message: "Pass an HTTP(S) /pair#token=... single-use pairing URL.",
             });
-          let host: string | undefined;
-          let pairingUrl: string | undefined;
-          if (input.operation === "add") {
+          host = parsed.host;
+          pairingUrl = parsed.href;
+        } else {
+          if (
+            input.environmentId === undefined &&
+            input.label === undefined &&
+            input.host === undefined
+          )
+            return yield* new OrchestratorMcpFailure({
+              code: "target_required",
+              message: "Pass environmentId, label, or host to identify the saved connection.",
+            });
+          if (input.host !== undefined) {
             const parsed = yield* Effect.try({
-              try: () => new URL(input.pairingUrl),
+              try: () => new URL(`http://${input.host}`),
               catch: unavailable,
             });
-            const token = new URLSearchParams(parsed.hash.slice(1));
             if (
-              !["http:", "https:"].includes(parsed.protocol) ||
+              parsed.host !== input.host ||
+              parsed.pathname !== "/" ||
               parsed.username ||
               parsed.password ||
-              parsed.pathname !== "/pair" ||
               parsed.search ||
-              !token.get("token") ||
-              [...token.keys()].some((key) => key !== "token") ||
-              token.getAll("token").length !== 1 ||
-              input.pairingUrl.length > 8192
+              parsed.hash
             )
               return yield* new OrchestratorMcpFailure({
                 code: "invalid_request",
-                message: "Pass an HTTP(S) /pair#token=... single-use pairing URL.",
+                message: "Pass only the host name and optional port.",
               });
             host = parsed.host;
-            pairingUrl = parsed.href;
-          } else {
-            if (
-              input.environmentId === undefined &&
-              input.label === undefined &&
-              input.host === undefined
-            )
-              return yield* new OrchestratorMcpFailure({
-                code: "target_required",
-                message: "Pass environmentId, label, or host to identify the saved connection.",
-              });
-            if (input.host !== undefined) {
-              const parsed = yield* Effect.try({
-                try: () => new URL(`http://${input.host}`),
-                catch: unavailable,
-              });
-              if (
-                parsed.host !== input.host ||
-                parsed.pathname !== "/" ||
-                parsed.username ||
-                parsed.password ||
-                parsed.search ||
-                parsed.hash
-              )
-                return yield* new OrchestratorMcpFailure({
-                  code: "invalid_request",
-                  message: "Pass only the host name and optional port.",
-                });
-              host = parsed.host;
-            }
           }
-          if (memory.size >= 1000)
-            return yield* new OrchestratorMcpFailure({
-              code: "invalid_request",
-              message:
-                "Too many pending saved connection requests. Answer or wait for existing cards to expire.",
-            });
-          const parent = yield* threads
-            .getThreadRecords(threadId, ["runs"], { messageRoles: [] })
-            .pipe(Effect.mapError(unavailable));
-          const run = ThreadManagement.latestActiveRun(parent);
-          if (
-            run === undefined ||
-            run.rootNodeId === null ||
-            run.providerInstanceId !== threadScope.thread.providerInstanceId
-          )
-            return yield* new OrchestratorMcpFailure({
-              code: "parent_not_active",
-              message: "The calling provider no longer owns an active run.",
-            });
-          const now = yield* Clock.currentTimeMillis;
-          const updatedAt = yield* DateTime.now;
-          const card: Card = {
-            id,
-            threadId,
-            runId: run.id,
-            nodeId: run.rootNodeId,
-            providerThreadId: null,
-            providerTurnId: null,
-            nativeItemRef: null,
-            parentItemId: null,
-            ordinal: 0,
-            status: "waiting",
-            title: input.label ?? host ?? "Saved connection",
-            startedAt: null,
-            completedAt: null,
-            updatedAt,
-            type: "saved_connection_request",
-            operation: input.operation,
-            label:
-              input.label ??
-              host ??
-              (input.operation === "remove" ? input.environmentId! : "Environment"),
-            host,
-            targetLabel: input.label,
-            targetEnvironmentId: input.operation === "remove" ? input.environmentId : undefined,
-            connectionStatus: "pending",
-          };
-          memory.set(id, { pairingUrl, expiresAt: now + TTL_MS });
-          yield* record(card).pipe(
-            Effect.tapError(() => Effect.sync(() => memory.delete(id))),
-            Effect.mapError(unavailable),
-          );
-          // Scoped timers hold no token. A disconnect leaves the card answerable until its deadline.
-          yield* Effect.sleep(TTL_MS).pipe(
-            Effect.andThen(
-              locks.withLock(
-                id,
-                Effect.gen(function* () {
-                  const current = yield* readCard(threadId, id);
-                  if (current !== undefined && open(current))
-                    yield* finish(current, {
-                      connectionStatus: "failed",
-                      failure:
-                        current.connectionStatus === "claimed" ? "interrupted" : "unavailable",
-                    });
-                  memory.delete(id);
-                }),
-              ),
+        }
+        if (memory.size >= 1000)
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              "Too many pending saved connection requests. Answer or wait for existing cards to expire.",
+          });
+        const parent = yield* threads
+          .getThreadRecords(threadId, ["runs"], { messageRoles: [] })
+          .pipe(Effect.mapError(unavailable));
+        const run = ThreadManagement.latestActiveRun(parent);
+        if (
+          run === undefined ||
+          run.rootNodeId === null ||
+          run.providerInstanceId !== threadScope.thread.providerInstanceId
+        )
+          return yield* new OrchestratorMcpFailure({
+            code: "parent_not_active",
+            message: "The calling provider no longer owns an active run.",
+          });
+        const now = yield* Clock.currentTimeMillis;
+        const updatedAt = yield* DateTime.now;
+        const card: Card = {
+          id,
+          threadId,
+          runId: run.id,
+          nodeId: run.rootNodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 0,
+          status: "waiting",
+          title: input.label ?? host ?? "Saved connection",
+          startedAt: null,
+          completedAt: null,
+          updatedAt,
+          type: "saved_connection_request",
+          operation: input.operation,
+          label:
+            input.label ??
+            host ??
+            (input.operation === "remove" ? input.environmentId! : "Environment"),
+          host,
+          targetLabel: input.label,
+          targetEnvironmentId: input.operation === "remove" ? input.environmentId : undefined,
+          connectionStatus: "pending",
+        };
+        memory.set(id, { pairingUrl, expiresAt: now + TTL_MS });
+        yield* record(card).pipe(
+          Effect.tapError(() => Effect.sync(() => memory.delete(id))),
+          Effect.mapError(unavailable),
+        );
+        // Scoped timers hold no token. A disconnect leaves the card answerable until its deadline.
+        yield* Effect.sleep(TTL_MS).pipe(
+          Effect.andThen(
+            locks.withLock(
+              id,
+              Effect.gen(function* () {
+                const current = yield* readCard(threadId, id);
+                if (current !== undefined && open(current))
+                  yield* finish(current, {
+                    connectionStatus: "failed",
+                    failure: current.connectionStatus === "claimed" ? "interrupted" : "unavailable",
+                  });
+                memory.delete(id);
+              }),
             ),
-            Effect.catch(() => Effect.sync(() => memory.delete(id))),
-            Effect.forkIn(scope),
-          );
-          return resultOf(card);
-        }),
-      );
-      const waitMs =
-        input.waitMs !== undefined && Number.isFinite(input.waitMs)
-          ? Math.min(MAX_WAIT_MS, Math.max(0, Math.floor(input.waitMs)))
-          : 0;
-      if (waitMs === 0 || !open(result)) return result;
-      const settled = yield* awaitOutcome(threadId, id, waitMs).pipe(Effect.mapError(unavailable));
-      return settled === undefined ? result : resultOf(settled);
-    });
+          ),
+          Effect.catch(() => Effect.sync(() => memory.delete(id))),
+          Effect.forkIn(scope),
+        );
+        return resultOf(card);
+      }),
+    );
+    const waitMs =
+      input.waitMs !== undefined && Number.isFinite(input.waitMs)
+        ? Math.min(MAX_WAIT_MS, Math.max(0, Math.floor(input.waitMs)))
+        : 0;
+    if (waitMs === 0 || !open(result)) return result;
+    const settled = yield* awaitOutcome(threadId, id, waitMs).pipe(Effect.mapError(unavailable));
+    return settled === undefined ? result : resultOf(settled);
+  });
 
   const respond: SavedConnectionRequests["Service"]["respond"] = (input) =>
     locks.withLock(

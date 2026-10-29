@@ -255,9 +255,7 @@ const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecov
         const executed: Array<readonly [number, string]> = [];
         for (const [id, name, migration] of migrationEntries) {
           if (id < legacyId || id >= CONTINUOUS_RECOVERY_MIGRATION_ID) continue;
-          yield* Effect.gen(function* () {
-            yield* migration;
-          }).pipe(
+          yield* Effect.asVoid(migration).pipe(
             Effect.mapError(
               (cause) =>
                 new Migrator.MigrationError({
