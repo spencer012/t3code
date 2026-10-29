@@ -1546,7 +1546,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
     registrations,
   }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
-export const layerSavedConnectionsToolkit = toolkitRegistration(
+const layerSavedConnectionsToolkit = toolkitRegistration(
   SavedConnectionsToolkit,
   SavedConnectionsHandlers.layer,
 );

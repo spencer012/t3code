@@ -16,6 +16,8 @@ import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { GitManager } from "../git/GitManager.ts";
 import { GitWorkflowService } from "../git/GitWorkflowService.ts";
 import { TaskFolders } from "../workspace/TaskFolders.ts";
+import { SavedConnectionRequests } from "../mcp/SavedConnectionRequests.ts";
+import { UsageLimitSources } from "../usage/UsageLimitSources.ts";
 import * as McpHttpServer from "../mcp/McpHttpServer.ts";
 import { PreviewAutomationBroker } from "../mcp/PreviewAutomationBroker.ts";
 import {
@@ -87,6 +89,8 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(GitManager)({}),
   Layer.mock(RemoteDelegation)({}),
   Layer.mock(ScheduledTaskService)({}),
+  Layer.mock(SavedConnectionRequests)({}),
+  Layer.mock(UsageLimitSources)({}),
   Layer.mock(SecretRequests)({}),
   Layer.mock(FeedbackStore)({}),
   NodeSqliteClient.layer({ filename: ":memory:" }),

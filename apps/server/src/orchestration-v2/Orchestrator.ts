@@ -11723,13 +11723,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
   });
 
-  const closeSavedConnectionRequests = (input: {
-    command: OrchestrationV2ServerCommand;
-    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
-    threadId: ThreadId;
-    now: DateTime.Utc;
-  }) =>
-    Effect.gen(function* () {
+  const closeSavedConnectionRequests = Effect.fn("orchestrationV2.closeSavedConnectionRequests")(
+    function* (input: {
+      command: OrchestrationV2ServerCommand;
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>;
+      threadId: ThreadId;
+      now: DateTime.Utc;
+    }) {
       const records = yield* projectionStore
         .getThreadRecords(input.threadId, ["turnItems"], {
           turnItemTypes: ["saved_connection_request"],
@@ -11762,7 +11762,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           },
         });
       }
-    });
+    },
+  );
 
   const dispatchRuntimeRequestRespond = Effect.fn("Orchestrator.dispatchRuntimeRequestRespond")(
     function* (
