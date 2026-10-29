@@ -380,7 +380,7 @@ export const layerProduction = Layer.mergeAll(
     Layer.provide(Layer.merge(layerOrchestratorProvided, layerCommandOutputHubProvided)),
   ),
   SavedConnectionRequests.layer.pipe(
-    Layer.provide(Layer.mergeAll(layerThreadManagementProvided, layerEventSinkProvided)),
+    Layer.provide(Layer.mergeAll(layerThreadManagementProvided, layerEventSink)),
   ),
   UsageLimitRecoveryWorker.layer.pipe(
     Layer.provide(

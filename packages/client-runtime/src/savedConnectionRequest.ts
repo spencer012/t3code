@@ -97,7 +97,7 @@ export const executeSavedConnectionRequest = Effect.fnUntraced(function* (
       environmentId: target.environmentId,
       label: target.label,
     }),
-    Effect.catch(() => Effect.succeed<Outcome>({ type: "failed", reason: "client_failed" })),
+    Effect.orElseSucceed((): Outcome => ({ type: "failed", reason: "client_failed" })),
   );
 });
 
