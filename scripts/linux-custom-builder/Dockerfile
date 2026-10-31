@@ -3,7 +3,7 @@ FROM ghcr.io/voidzero-dev/vite-plus:1.0.0
 RUN sudo apt-get update \
     && sudo apt-get install -y --no-install-recommends \
         ca-certificates curl git rsync build-essential python3 \
-        libsecret-1-dev pkg-config imagemagick \
+        libsecret-1-dev pkg-config imagemagick patchelf \
     && sudo rm -rf /var/lib/apt/lists/*
 
 RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
