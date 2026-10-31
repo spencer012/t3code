@@ -199,8 +199,6 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* (
       );
     }
 
-    const unsafeCrossing = crossesTrackUnsafely(input);
-    if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);
     const targetVersion = input.targetVersion.trim();
     if (!isExactServiceVersion(targetVersion)) {
       return yield* failWith(`'${targetVersion}' is not an exact t3 version.`);
@@ -212,6 +210,8 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* (
       releaseBaseUrl,
     });
     if (violation !== undefined) return yield* failWith(violation);
+    const unsafeCrossing = crossesTrackUnsafely(input);
+    if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);
     if (yield* Ref.getAndSet(inFlight, true)) {
       return yield* failWith("A server update is already in progress.");
     }

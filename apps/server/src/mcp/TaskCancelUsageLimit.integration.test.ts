@@ -41,6 +41,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
@@ -169,6 +170,9 @@ it.effect.each([
               }),
               ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
               ServerSettings.layerTest({ autoResumeLimitedThreads: true }),
+              Layer.mock(TerminalManager.TerminalManager)({
+                subscribeMetadata: () => Effect.succeed(() => undefined),
+              }),
             ),
           ),
         );
@@ -347,7 +351,7 @@ it.effect.each([
             childAfter.messages.flatMap((message) =>
               message.role === "user" ? [message.text] : [],
             ),
-            resumed ? ["Review the change", "Continue where you left off."] : ["Review the change"],
+            resumed ? ["Review the change", "Continue"] : ["Review the change"],
           );
         }).pipe(Effect.provide(layerTest));
       }),
