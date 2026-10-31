@@ -61,7 +61,10 @@ try {
         }
     } else {
         Invoke-BuildStep 'Checking the Linux build environment...' 'docker' @('info','--format','{{.OSType}}')
-        $builderImage = 't3code-linux-builder:local'
+        # Tag by Dockerfile content so a changed builder definition rebuilds the image.
+        $builderDockerfile = Join-Path $repoRoot 'scripts/linux-custom-builder/Dockerfile'
+        $builderHash = (Get-FileHash -LiteralPath $builderDockerfile -Algorithm SHA256).Hash
+        $builderImage = 't3code-linux-builder:' + $builderHash.Substring(0, 12).ToLowerInvariant()
         $imageCheckPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
