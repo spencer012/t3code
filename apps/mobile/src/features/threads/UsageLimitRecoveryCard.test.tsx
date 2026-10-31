@@ -35,6 +35,7 @@ vi.mock("../../components/ui/Button", () => ({
 }));
 vi.mock("../../state/threads", () => ({ threadEnvironment: { updateMetadata: {} } }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
+vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
 
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 
