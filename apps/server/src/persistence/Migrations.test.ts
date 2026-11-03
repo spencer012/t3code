@@ -8,7 +8,6 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import ContinuousRecoveryIndex from "./Migrations/077_ContinuousRecoveryIndex.ts";
 
 const v2Migrations = migrationManifest.filter(([id]) => id >= 55);
 const newerMigrationId = Math.max(...migrationManifest.map(([id]) => id)) + 1;
@@ -30,60 +29,29 @@ const v2TableCount = Effect.gen(function* () {
 });
 
 describe("runMigrations", () => {
-  it.effect.each([61, 65, 68, 73])(
-    "upgrades the custom continuation ledger recorded at %s while preserving thread data",
+  it.effect.each([61, 65, 68, 73, 77])(
+    "forgets the removed custom continuation migration recorded at %s",
     (legacyId) =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* runMigrations({ toMigrationInclusive: legacyId - 1 });
-        yield* ContinuousRecoveryIndex;
         yield* sql`
-          INSERT INTO effect_sql_migrations (migration_id, name, created_at)
-          VALUES (${legacyId}, 'ContinuousRecoveryIndex', '2026-10-08 00:00:00')
+          CREATE INDEX idx_v2_continuous_recovery ON orchestration_v2_projection_threads(thread_id)
         `;
-        const executed = yield* runMigrations();
+        yield* sql`
+          INSERT INTO effect_sql_migrations (migration_id, name)
+          VALUES (${legacyId}, 'ContinuousRecoveryIndex')
+        `;
         assert.deepStrictEqual(
-          executed,
-          migrationManifest.filter(([id]) => id >= legacyId && id < 77),
+          yield* runMigrations(),
+          migrationManifest.filter(([id]) => id >= legacyId),
         );
         assert.deepStrictEqual(yield* history, migrationManifest);
         assert.deepStrictEqual(
-          yield* sql`SELECT created_at FROM effect_sql_migrations WHERE migration_id = 77`,
-          [{ created_at: "2026-10-08 00:00:00" }],
+          yield* sql`SELECT name FROM sqlite_master WHERE name = 'idx_v2_continuous_recovery'`,
+          [],
         );
-        assert.equal(
-          (yield* sql`SELECT name FROM sqlite_master WHERE name = 'idx_v2_continuous_recovery'`)
-            .length,
-          1,
-        );
-        assert.deepStrictEqual(yield* runMigrations(), []);
       }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
-  );
-
-  it.effect("rolls back the custom ledger remap when an upstream migration fails", () =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 64 });
-      yield* ContinuousRecoveryIndex;
-      yield* sql`
-        INSERT INTO effect_sql_migrations (migration_id, name) VALUES (65, 'ContinuousRecoveryIndex')
-      `;
-      const before = yield* history;
-      yield* sql`
-        CREATE TRIGGER fail_custom_upgrade BEFORE INSERT ON effect_sql_migrations
-        WHEN NEW.name = 'WebhookDedupe'
-        BEGIN SELECT RAISE(ABORT, 'injected failure'); END
-      `;
-      assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
-      assert.deepStrictEqual(yield* history, before);
-      assert.deepStrictEqual(
-        yield* sql`SELECT name FROM sqlite_master WHERE name = 'scheduled_task_webhook_pending'`,
-        [],
-      );
-      yield* sql`DROP TRIGGER fail_custom_upgrade`;
-      yield* runMigrations();
-      assert.deepStrictEqual(yield* history, migrationManifest);
-    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
   it.effect("refuses to start when another migration took a V2 id", () =>

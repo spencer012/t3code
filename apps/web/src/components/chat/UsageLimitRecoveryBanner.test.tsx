@@ -16,9 +16,6 @@ function bannerDescription(resetAt: Date, timestampFormat: TimestampFormat) {
     requestPending: false,
     snoozedUntil: null,
     recovery: null,
-    continuousRecovery: null,
-    disabled: false,
-    onContinuousChange: async () => {},
     timestampFormat,
     onChange: async () => {},
   }).description;
