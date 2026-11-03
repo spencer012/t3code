@@ -16,9 +16,6 @@ function bannerItem(resetAt: Date, timestampFormat: TimestampFormat = "24-hour")
     requestPending: false,
     snoozedUntil: null,
     recovery: null,
-    continuousRecovery: null,
-    disabled: false,
-    onContinuousChange: async () => {},
     timestampFormat,
     onChange: async () => {},
   });
