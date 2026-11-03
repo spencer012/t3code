@@ -213,29 +213,26 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
   });
 });
 
-const CONTINUOUS_RECOVERY_MIGRATION_ID = 77;
-// Custom releases recorded this index at 61, 65, 68, and 73 before main assigned those ids.
-// Move that exact history to the current id and apply the skipped upstream migrations
-// atomically.
-const LEGACY_CONTINUOUS_RECOVERY_MIGRATION_IDS = [61, 65, 68, 73] as const;
+// Custom releases recorded a since-removed ContinuousRecoveryIndex migration at ids main
+// later assigned. Forget it so the normal migrator applies main's migrations from there.
+const LEGACY_CONTINUOUS_RECOVERY_MIGRATION_IDS = [61, 65, 68, 73, 77] as const;
 
-const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecoveryMigration")(
-  function* (throughId?: number) {
-    if (throughId !== undefined && throughId < CONTINUOUS_RECOVERY_MIGRATION_ID) return [];
+const forgetContinuousRecoveryMigration = Effect.fn("forgetContinuousRecoveryMigration")(
+  function* () {
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql.withTransaction(
+    yield* sql.withTransaction(
       Effect.gen(function* () {
         const tables = yield* sql`
           SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
         `;
-        if (tables.length === 0) return [];
+        if (tables.length === 0) return;
         const legacy = yield* sql<{ readonly migration_id: number }>`
           SELECT migration_id FROM effect_sql_migrations
           WHERE name = 'ContinuousRecoveryIndex'
             AND migration_id IN ${sql.in(LEGACY_CONTINUOUS_RECOVERY_MIGRATION_IDS)}
         `;
         const legacyId = legacy[0]?.migration_id;
-        if (legacyId === undefined) return [];
+        if (legacyId === undefined) return;
         const later = yield* sql<{ readonly count: number }>`
           SELECT COUNT(*) AS count FROM effect_sql_migrations WHERE migration_id > ${legacyId}
         `;
@@ -243,31 +240,11 @@ const reconcileContinuousRecoveryMigration = Effect.fn("reconcileContinuousRecov
           return yield* new Migrator.MigrationError({
             kind: "BadState",
             message:
-              "Cannot upgrade custom continuation migration with unexpected later migrations.",
+              "Cannot remove the custom continuation migration with unexpected later migrations.",
           });
         }
-        yield* sql`
-          UPDATE effect_sql_migrations
-          SET migration_id = ${CONTINUOUS_RECOVERY_MIGRATION_ID}
-          WHERE migration_id = ${legacyId}
-        `;
-        const executed: Array<readonly [number, string]> = [];
-        for (const [id, name, migration] of migrationEntries) {
-          if (id < legacyId || id >= CONTINUOUS_RECOVERY_MIGRATION_ID) continue;
-          yield* Effect.asVoid(migration).pipe(
-            Effect.mapError(
-              (cause) =>
-                new Migrator.MigrationError({
-                  kind: "Failed",
-                  message: `Failed to apply custom upgrade migration ${id}_${name}.`,
-                  cause,
-                }),
-            ),
-          );
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
-          executed.push([id, name]);
-        }
-        return executed;
+        yield* sql`DROP INDEX IF EXISTS idx_v2_continuous_recovery`;
+        yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${legacyId}`;
       }),
     );
   },
@@ -285,15 +262,12 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
-  const customMigrations = includesV2
-    ? yield* reconcileContinuousRecoveryMigration(toMigrationInclusive)
-    : [];
   if (includesV2) {
+    yield* forgetContinuousRecoveryMigration();
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
   const executedMigrations = [
     ...previewMigrations,
-    ...customMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
