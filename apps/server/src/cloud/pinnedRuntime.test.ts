@@ -169,6 +169,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         ensurePinnedRuntimeInstalled({
           baseDir,
           version,
+          runningVersion: "1.0.0",
           fs,
           path,
           platform: "linux",
@@ -322,6 +323,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         ensurePinnedRuntimeInstalled({
           baseDir,
           version,
+          runningVersion: "1.0.0",
           fs,
           path,
           platform: "linux",
