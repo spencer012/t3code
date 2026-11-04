@@ -130,6 +130,7 @@ it.layer(NodeServices.layer)("t3 update under a managed policy", (it) => {
       requestedVersion: input.requestedVersion,
       allowDowngrade: false,
       assumeYes: true,
+      runningVersion: "1.0.0",
     }).pipe(
       Effect.flip,
       Effect.provide(

@@ -397,6 +397,8 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   readonly requestedVersion: string | undefined;
   readonly allowDowngrade: boolean;
   readonly assumeYes: boolean;
+  /** The build doing the update. Decides the custom release policy. */
+  readonly runningVersion?: string;
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -409,7 +411,7 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
   const policy = yield* ManagedPolicy.ManagedPolicy;
   const mirror = managedUpdateMirror(policy.document);
 
-  const currentVersion = packageJson.version;
+  const currentVersion = input.runningVersion ?? packageJson.version;
   const releaseBaseUrl =
     mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined);
   const channel = input.channel ?? cliReleaseChannelOf(currentVersion);
