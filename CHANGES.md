@@ -234,6 +234,28 @@ normal migrator applies upstream's migrations from that ID. Keep this shim, with
 its test, while databases written by those releases may still upgrade. Leftover
 `continuousRecovery` keys in stored thread payloads are ignored when decoded.
 
+## Service realignment after in-app updates
+
+Requested on 2026-11-08.
+
+**Update server** in the app hands the update to the boot service's launcher,
+which records the new version only in its state file. The unit (or launch agent)
+kept starting the first install's runtime, without settings added by newer
+renderers, and `~/.local/bin/t3` kept pointing at it. Once the launcher commits
+an update, the new server now repoints both, as `t3 update` does, without
+restarting anything. The service runs its new definition from its next restart.
+
+- `BootService.realign` rewrites the unit only when it serves this T3 home, the
+  launcher state names this version with no pending update, and the runtime is
+  complete. It reloads systemd (launchd reads the plist at its next bootstrap)
+  and leaves service state and the restart-pending marker alone.
+- Launchers go through `repointLauncher`: only links into this home's runtimes,
+  and never back to an older version.
+- Failures are logged and never fail or roll back the committed update.
+
+If upstream realigns the service after launcher updates itself, adopt its
+implementation and drop this one.
+
 ## Personal details stay out of the fork
 
 Requested on 2026-10-19.

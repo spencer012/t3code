@@ -34,18 +34,27 @@ import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { managedUpdateMirror, managedUpdateRefusal } from "../policy/managedUpdates.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { repointLauncher } from "../cli/update.ts";
+import * as BootService from "./bootService.ts";
 import {
   ensurePinnedRuntimeInstalled,
   isUnpublishedRelease,
   pinnedRuntimeCommand,
   PinnedRuntimeInstallError,
+  pinnedRuntimeLaunchers,
   pinnedRuntimePaths,
   PinnedRuntimePreflightBlockedError,
   prunePinnedRuntimes,
 } from "./pinnedRuntime.ts";
 import { decodeServicePreflightResult } from "./servicePreflight.ts";
 import * as ServiceLauncherClient from "./serviceLauncherClient.ts";
-import { isExactServiceVersion, SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
+import {
+  compareExactServiceVersions,
+  isExactServiceVersion,
+  parseServiceState,
+  SERVICE_LAUNCHER_PROTOCOL,
+  SERVICE_STATE_FILE,
+} from "./serviceProtocol.ts";
 
 // A staged runtime's cold start can take over a minute on a loaded, swapping host.
 const PREFLIGHT_TIMEOUT = Duration.minutes(3);
@@ -101,6 +110,79 @@ export const pruneRuntimesOnStart = Effect.fn("cloud.server_self_update.prune_on
     }
     return removed;
   },
+);
+
+/**
+ * An update the launcher commits leaves the service's unit and the `t3` launchers on the runtime
+ * it replaced, where `t3 update` would have repointed both. Repoint them without restarting
+ * anything; the service runs its new definition from its next start. The update has already
+ * committed, so failures are only logged.
+ */
+export const realignAfterServiceUpdate = Effect.fn("cloud.server_self_update.realign_after_update")(
+  function* (input: { readonly baseDir: string; readonly logsDir: string }) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const platform = yield* HostProcess.Platform;
+    const stateText = yield* fs
+      .readFileString(path.join(input.baseDir, "runtime", SERVICE_STATE_FILE))
+      .pipe(Effect.orElseSucceed(() => ""));
+    const state = parseServiceState(stateText);
+    // A later `t3 update` or a new pending update owns them now.
+    if (state?.activeVersion !== packageJson.version || state.update?.status === "pending") return;
+
+    const { entryPath } = pinnedRuntimePaths(path, input.baseDir, packageJson.version, platform);
+    const { recorded, found } = yield* pinnedRuntimeLaunchers(input.baseDir);
+    for (const launcher of new Set([...recorded, ...found])) {
+      const link = yield* fs.readLink(launcher).pipe(Effect.option);
+      const linkedVersion = Option.isSome(link)
+        ? path.basename(path.dirname(path.resolve(path.dirname(launcher), link.value)))
+        : undefined;
+      // Never move a launcher back, or rewrite one that is already current.
+      if (
+        linkedVersion !== undefined &&
+        isExactServiceVersion(linkedVersion) &&
+        compareExactServiceVersions(linkedVersion, packageJson.version) >= 0
+      ) {
+        continue;
+      }
+      yield* repointLauncher({
+        launchedAs: launcher,
+        baseDir: input.baseDir,
+        targetEntryPath: entryPath,
+      }).pipe(
+        Effect.flatMap((repointed) =>
+          Option.isSome(repointed)
+            ? Effect.logInfo("Repointed the t3 launcher at the updated runtime.", { launcher })
+            : Effect.void,
+        ),
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not repoint the t3 launcher at the updated runtime.", {
+            launcher,
+            cause,
+          }),
+        ),
+      );
+    }
+
+    const realigned = yield* BootService.BootService.pipe(
+      Effect.flatMap((service) => service.realign),
+      Effect.provide(
+        BootService.layer({
+          baseDir: input.baseDir,
+          logsDir: input.logsDir,
+          cliVersion: packageJson.version,
+        }),
+      ),
+    );
+    if (realigned) {
+      yield* Effect.logInfo(
+        "Pointed the background service at the updated runtime; it applies at the next restart.",
+      );
+    }
+  },
+  Effect.catchCause((cause) =>
+    Effect.logWarning("Could not realign the background service with the update.", { cause }),
+  ),
 );
 
 /** The client checks this when planning; the host checks again because its database may have

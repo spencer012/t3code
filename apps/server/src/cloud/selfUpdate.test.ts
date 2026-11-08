@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import type { ManagedPolicyDocument } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -19,6 +20,8 @@ import * as ServerConfig from "../config.ts";
 import * as DesktopAppUpdate from "../desktopUpdate/DesktopAppUpdate.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import * as BootService from "./bootService.ts";
+import { pinnedRuntimePaths } from "./pinnedRuntime.ts";
 import * as ServiceLauncherClient from "./serviceLauncherClient.ts";
 import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 import * as ServerSelfUpdate from "./selfUpdate.ts";
@@ -438,6 +441,160 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
       const { removed, remaining } = yield* pruneOnStart({ executable: "elsewhere" });
       expect(removed).toEqual([]);
       expect(remaining).toEqual([staleVersion, packageJson.version].toSorted());
+    }),
+  );
+});
+
+it.layer(NodeServices.layer)("realigning after an in-app update", (it) => {
+  const previousVersion = "0.0.1";
+  const newerVersion = "999.0.0";
+
+  const realign = Effect.fn("test.realign_after_update")(function* (input: {
+    readonly state: "committed" | "pending";
+    readonly reloadFails?: boolean;
+  }) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-realign-" });
+    const baseDir = path.join(home, ".t3");
+    const logsDir = path.join(baseDir, "userdata", "logs");
+    const entry = (version: string) =>
+      pinnedRuntimePaths(path, baseDir, version, "linux").entryPath;
+    for (const version of [previousVersion, packageJson.version, newerVersion]) {
+      const paths = pinnedRuntimePaths(path, baseDir, version, "linux");
+      yield* fs.makeDirectory(paths.versionDir, { recursive: true });
+      yield* fs.writeFileString(paths.entryPath, "");
+      yield* fs.writeFileString(paths.sentinelPath, `${version}\n`);
+    }
+    const statePath = path.join(baseDir, "runtime", "service-state.json");
+    const state = JSON.stringify(
+      input.state === "committed"
+        ? {
+            protocol: SERVICE_LAUNCHER_PROTOCOL,
+            activeVersion: packageJson.version,
+            update: {
+              id: "u",
+              fromVersion: previousVersion,
+              targetVersion: packageJson.version,
+              status: "committed",
+            },
+          }
+        : {
+            protocol: SERVICE_LAUNCHER_PROTOCOL,
+            activeVersion: previousVersion,
+            update: {
+              id: "u",
+              fromVersion: previousVersion,
+              targetVersion: packageJson.version,
+              dbPath: path.join(baseDir, "state.sqlite"),
+              status: "pending",
+            },
+          },
+    );
+    yield* fs.writeFileString(statePath, state);
+    const launchers = {
+      default: path.join(home, ".local", "bin", "t3"),
+      recorded: path.join(home, "opt", "t3"),
+      newer: path.join(home, "newer", "t3"),
+    };
+    for (const [name, launcher] of Object.entries(launchers)) {
+      yield* fs.makeDirectory(path.dirname(launcher), { recursive: true });
+      yield* fs.symlink(entry(name === "newer" ? newerVersion : previousVersion), launcher);
+    }
+    yield* fs.writeFileString(
+      path.join(baseDir, "runtime", "launchers"),
+      `\n${launchers.recorded}\n${launchers.newer}\n`,
+    );
+    const unitPath = path.join(home, ".config", "systemd", "user", "t3code.service");
+    yield* fs.makeDirectory(path.dirname(unitPath), { recursive: true });
+    // The unit `t3 service install` wrote for the previous runtime, before MemoryLow existed.
+    const unit = BootService.renderBootServiceUnit({
+      program: [entry(previousVersion), "__service-launcher"],
+      baseDir,
+      logPath: path.join(logsDir, "boot-service.log"),
+      unitPath,
+    }).replace("MemoryLow=1536M\n", "");
+    yield* fs.writeFileString(unitPath, unit);
+
+    const commands: string[] = [];
+    const runner = ProcessRunner.ProcessRunner.of({
+      run: (run) => {
+        const command = `${run.command} ${run.args.join(" ")}`;
+        commands.push(command);
+        const failed =
+          run.command === "busctl" ||
+          (input.reloadFails === true && command === "systemctl --user daemon-reload");
+        return Effect.succeed({
+          stdout: "",
+          stderr: "",
+          code: ChildProcessSpawner.ExitCode(failed ? 1 : 0),
+          timedOut: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+          stdoutInvalidUtf8: false,
+          stderrInvalidUtf8: false,
+        });
+      },
+    });
+    yield* ServerSelfUpdate.realignAfterServiceUpdate({ baseDir, logsDir }).pipe(
+      Effect.provideService(ProcessRunner.ProcessRunner, runner),
+      Effect.provideService(
+        HttpClient.HttpClient,
+        HttpClient.make(() => Effect.die("no release download expected")),
+      ),
+      Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.HomeDirectory, home),
+      Effect.provideService(HostProcess.Environment, {}),
+      Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: home } }))),
+    );
+
+    return {
+      entry,
+      unit,
+      state,
+      after: {
+        unit: yield* fs.readFileString(unitPath),
+        state: yield* fs.readFileString(statePath),
+        default: yield* fs.readLink(launchers.default),
+        recorded: yield* fs.readLink(launchers.recorded),
+        newer: yield* fs.readLink(launchers.newer),
+      },
+      systemctl: commands.filter((command) => command.startsWith("systemctl ")),
+    };
+  });
+
+  it.effect("points the unit and launchers at the committed runtime without a restart", () =>
+    Effect.gen(function* () {
+      const { entry, state, after, systemctl } = yield* realign({ state: "committed" });
+      expect(BootService.bootServiceProgramOf(after.unit)).toBe(entry(packageJson.version));
+      expect(after.unit).toContain("MemoryLow=1536M\n");
+      expect(systemctl).toEqual(["systemctl --user daemon-reload"]);
+      expect(after.state).toBe(state);
+      expect(after.default).toBe(entry(packageJson.version));
+      expect(after.recorded).toBe(entry(packageJson.version));
+      expect(after.newer).toBe(entry(newerVersion));
+    }),
+  );
+
+  it.effect("only logs a failed reload, after repointing the launchers", () =>
+    Effect.gen(function* () {
+      const { entry, after, systemctl } = yield* realign({
+        state: "committed",
+        reloadFails: true,
+      });
+      expect(systemctl).toEqual(["systemctl --user daemon-reload"]);
+      expect(after.default).toBe(entry(packageJson.version));
+    }),
+  );
+
+  it.effect("leaves everything alone while an update is still pending", () =>
+    Effect.gen(function* () {
+      const { entry, unit, state, after, systemctl } = yield* realign({ state: "pending" });
+      expect(after.unit).toBe(unit);
+      expect(after.state).toBe(state);
+      expect(after.default).toBe(entry(previousVersion));
+      expect(after.recorded).toBe(entry(previousVersion));
+      expect(systemctl).toEqual([]);
     }),
   );
 });

@@ -312,7 +312,14 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         T3CODE_RELEASE_BASE_URL: "https://mirror.example:8443/t3",
         NODE_EXTRA_CA_CERTS: "/usr/local/share/ca-certificates/release-mirror.crt",
       };
-      const mirrored = yield* makeService(undefined, "1.2.3", undefined, false, undefined, mirrorEnv);
+      const mirrored = yield* makeService(
+        undefined,
+        "1.2.3",
+        undefined,
+        false,
+        undefined,
+        mirrorEnv,
+      );
       const plan = yield* mirrored.install();
       const unit = yield* fs.readFileString(plan.unitPath);
       expect(unit).toContain("Environment=T3CODE_RELEASE_BASE_URL=https://mirror.example:8443/t3");
@@ -605,6 +612,87 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         expect((yield* newer.status).problems).not.toContain("restart-pending");
         expect((yield* newer.status).current).toBe(true);
       }),
+  );
+
+  it.effect.each(["linux", "darwin"] as const)(
+    "realigns the unit with an update the launcher committed, without restarting it, on %s",
+    (platform) =>
+      Effect.gen(function* () {
+        const { service, fs, statePath, commands, makeService } = yield* makeHarness(platform);
+        const path = yield* Path.Path;
+        const plan = yield* service.install();
+        // The launcher commits an in-app update to its state file only.
+        const committed = JSON.stringify({
+          protocol: SERVICE_LAUNCHER_PROTOCOL,
+          activeVersion: "1.2.4",
+          update: { id: "u", fromVersion: "1.2.3", targetVersion: "1.2.4", status: "committed" },
+        });
+        yield* fs.writeFileString(statePath, committed);
+        // Units from older renderers lack settings added since.
+        yield* fs.writeFileString(
+          plan.unitPath,
+          (yield* fs.readFileString(plan.unitPath)).replace("MemoryLow=1536M\n", ""),
+        );
+        const updated = yield* makeService(undefined, "1.2.4");
+        commands.length = 0;
+
+        expect(yield* updated.realign).toBe(true);
+
+        const unit = yield* fs.readFileString(plan.unitPath);
+        expect(BootService.bootServiceProgramOf(unit)).toBe(
+          pinnedRuntimePaths(path, plan.baseDir, "1.2.4", platform).entryPath,
+        );
+        if (platform === "linux") expect(unit).toContain("MemoryLow=1536M\n");
+        expect(yield* fs.readFileString(statePath)).toBe(committed);
+        expect(commands.filter((command) => /^(systemctl|launchctl) /.test(command))).toEqual(
+          platform === "linux" ? ["systemctl --user daemon-reload"] : [],
+        );
+        expect(yield* fs.exists(`${plan.baseDir}/runtime/${SERVICE_RESTART_PENDING_FILE}`)).toBe(
+          false,
+        );
+        commands.length = 0;
+        expect(yield* updated.realign).toBe(false);
+        expect(commands.filter((command) => command.startsWith("systemctl "))).toEqual([]);
+        expect((yield* updated.status).current).toBe(true);
+      }),
+  );
+
+  it.effect("realigns only a runtime the launcher committed for this home", () =>
+    Effect.gen(function* () {
+      const { service, fs, statePath, commands, makeService } = yield* makeHarness();
+      const path = yield* Path.Path;
+      const plan = yield* service.install();
+      const unit = yield* fs.readFileString(plan.unitPath);
+      const updated = yield* makeService(undefined, "1.2.4");
+      const state = (activeVersion: string, update?: object) =>
+        JSON.stringify({ protocol: SERVICE_LAUNCHER_PROTOCOL, activeVersion, update });
+      commands.length = 0;
+
+      for (const contents of [
+        state("1.2.3", { id: "u", fromVersion: "1.2.3", targetVersion: "1.2.4", status: "failed" }),
+        state("1.2.3", {
+          id: "u",
+          fromVersion: "1.2.3",
+          targetVersion: "1.2.4",
+          dbPath: "/tmp/state.sqlite",
+          status: "pending",
+        }),
+        // A later `t3 update` already moved the service on.
+        state("1.2.5"),
+      ]) {
+        yield* fs.writeFileString(statePath, contents);
+        expect(yield* updated.realign).toBe(false);
+      }
+      yield* fs.writeFileString(statePath, state("1.2.4"));
+      const otherHome = yield* fs.makeTempDirectoryScoped({ prefix: "t3-other-home-" });
+      const other = yield* makeService(undefined, "1.2.4", path.join(otherHome, ".t3"));
+      expect(yield* other.realign).toBe(false);
+      yield* fs.remove(pinnedRuntimePaths(path, plan.baseDir, "1.2.4", "linux").sentinelPath);
+      expect(yield* updated.realign).toBe(false);
+
+      expect(yield* fs.readFileString(plan.unitPath)).toBe(unit);
+      expect(commands.filter((command) => command.startsWith("systemctl "))).toEqual([]);
+    }),
   );
 
   it.effect("install with start=false keeps the marker when a later write fails", () =>

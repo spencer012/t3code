@@ -89,6 +89,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, NetService.layer))
             BootService.BootService.of({
               status: Effect.succeed(status),
               withStopped: (operation) => operation,
+              realign: Effect.succeed(false),
               restart: Effect.sync(() => events.push("restart")).pipe(
                 Effect.andThen(
                   Effect.fail(new BootService.BootServiceCommandError({ step: "restart" })),

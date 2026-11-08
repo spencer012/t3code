@@ -589,6 +589,12 @@ export class BootService extends Context.Service<
      */
     readonly restart: Effect.Effect<"restarted" | "queued" | "skipped", BootServiceError>;
     /**
+     * Rewrites this home's unit or plist for the runtime its launcher settled on, then reloads
+     * the manager without starting or stopping anything. The running service keeps its old
+     * definition until its next start. Leaves service state alone; true when it rewrote.
+     */
+    readonly realign: Effect.Effect<boolean, BootServiceError>;
+    /**
      * Runs the operation with this home's service stopped; other homes are left alone.
      * Restores a previously enabled or loaded service even if stopping failed.
      * The operation's failure takes precedence over a restart failure.
@@ -1028,6 +1034,39 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     Effect.withSpan("cloud.boot_service.restart"),
   );
 
+  const realign: BootService["Service"]["realign"] = Effect.gen(function* () {
+    if (detectedManager === undefined) return false;
+    const manager = detectedManager;
+    const unit = yield* fs.readFileString(unitPath).pipe(Effect.option);
+    if (Option.isNone(unit)) return false;
+    const installedBaseDir = bootServiceBaseDirOf(unit.value);
+    if (
+      installedBaseDir === undefined ||
+      path.resolve(installedBaseDir) !== path.resolve(input.baseDir)
+    ) {
+      return false;
+    }
+    // Only the runtime the launcher committed to; never one a pending update may still roll back.
+    const [stateText, runtimeSentinel] = yield* Effect.all([
+      fs.readFileString(statePath).pipe(Effect.option),
+      fs.readFileString(runtimePaths.sentinelPath).pipe(Effect.option),
+    ]);
+    const state = Option.isSome(stateText) ? parseServiceState(stateText.value) : undefined;
+    if (
+      state?.activeVersion !== input.cliVersion ||
+      state.update?.status === "pending" ||
+      Option.getOrUndefined(runtimeSentinel)?.trim() !== input.cliVersion
+    ) {
+      return false;
+    }
+    const rendered = manager.render(plan);
+    if (unit.value === rendered) return false;
+    yield* writeDurably(unitPath, rendered);
+    // systemd reloads the unit for the next start; launchd reads the plist at its next bootstrap.
+    yield* runSteps(manager.finalize);
+    return true;
+  }).pipe(Effect.withSpan("cloud.boot_service.realign"));
+
   const withStopped = Effect.fn("cloud.boot_service.with_stopped")(function* <A, E, R>(
     operation: Effect.Effect<A, E, R>,
   ): Effect.fn.Return<A, E | BootServiceError, R> {
@@ -1142,7 +1181,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     Effect.withSpan("cloud.boot_service.status"),
   );
 
-  return BootService.of({ install, restart, withStopped, uninstall, status });
+  return BootService.of({ install, restart, realign, withStopped, uninstall, status });
 });
 
 export const layer = (input: {

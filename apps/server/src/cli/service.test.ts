@@ -36,6 +36,7 @@ function makeTestService(
   const service = BootService.BootService.of({
     status: Effect.succeed(serviceStatus),
     withStopped: (operation) => operation,
+    realign: Effect.succeed(false),
     restart: Effect.sync(() => {
       restarts.push(true);
       return serviceStatus.installed ? restartOutcome : "skipped";

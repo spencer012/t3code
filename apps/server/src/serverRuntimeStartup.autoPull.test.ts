@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import { HttpServer } from "effect/http";
+import { HttpClient, HttpServer } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";
 
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -25,6 +25,7 @@ import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManag
 import * as ThreadLaunch from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "./orchestration-v2/ThreadManagementService.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import * as ProcessRunner from "./processRunner.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { ServerActivation } from "./serverActivation.ts";
@@ -144,6 +145,12 @@ it.effect("parks automatic pull until activation without delaying command readin
           countThreads: () => Effect.succeed(0),
         }),
         Layer.mock(ThreadLaunch.ThreadLaunchService)({}),
+        // Only an update the launcher committed realigns the service with them.
+        Layer.mock(ProcessRunner.ProcessRunner)({}),
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make(() => Effect.die("no request expected")),
+        ),
         Layer.mock(ServiceLauncherClient.ServiceLauncherClient)({
           managed: true,
           prepareTrial: Deferred.succeed(prepared, undefined).pipe(
