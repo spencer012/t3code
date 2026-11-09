@@ -119,6 +119,10 @@ remains the deliberate Git workflow above. Do not install an older artifact afte
 a failed build. Include a Linux WSL runtime built from the same source, and keep
 package-validation temporary directories outside ancestors with node_modules.
 The launcher requires Docker Desktop with Linux containers for that runtime.
+Upstream packages Windows on a Linux host and caps the payload at 80 files. A
+Windows-host build also ships `@cursor/sdk-win32-x64` and the win32
+`@transcribe-cpp` DLLs, so the custom cap is 96. Keep it above the measured
+Windows-host count when upstream adds native packages.
 
 The user must explicitly quit the running desktop client before the launcher
 starts installation. Changing the remote server alone does not update the
