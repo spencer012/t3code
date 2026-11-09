@@ -2366,76 +2366,82 @@ it.effect.each([
   }).pipe(Effect.provide(layerFailingWrites(errors))),
 );
 
-it.effect("keeps pairing credentials out of normalized tool, command, and message events", () =>
-  Effect.gen(function* () {
-    const now = yield* DateTime.now;
-    const eventSink = yield* EventSink.EventSinkV2;
-    const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
-    const idAllocator = yield* IdAllocator.IdAllocatorV2;
-    const threadEvent = yield* threadCreatedEvent(now);
-    yield* eventSink.write({ events: [threadEvent] });
-    const providerSessionId = yield* idAllocator.allocate.providerSession({
-      providerInstanceId: modelSelection.instanceId,
-      threadId: threadEvent.threadId,
-    });
-    const secret = "pairing-ingestion-secret";
-    const pairingUrl = `https://foo.test/pair#token=${secret}`;
-    const base = {
-      threadId: threadEvent.threadId,
-      runId: null,
-      nodeId: null,
-      providerThreadId: null,
-      providerTurnId: null,
-      nativeItemRef: null,
-      parentItemId: null,
-      status: "completed" as const,
-      title: "Pairing",
-      startedAt: now,
-      completedAt: now,
-      updatedAt: now,
-    };
-    const items: OrchestrationV2TurnItem[] = [
-      {
-        ...base,
-        id: TurnItemId.make("privacy:tool"),
-        ordinal: 1,
-        type: "dynamic_tool",
-        toolName: "mcp__t3_code__t3_saved_connection_add",
-        input: { pairingUrl },
-        output: "pending",
-      },
-      {
-        ...base,
-        id: TurnItemId.make("privacy:command"),
-        ordinal: 2,
-        type: "command_execution",
-        input: "mint-pairing-link",
-        output: pairingUrl,
-      },
-      {
-        ...base,
-        id: TurnItemId.make("privacy:message"),
-        ordinal: 3,
-        type: "assistant_message",
-        messageId: MessageId.make("privacy:message"),
-        text: pairingUrl,
-        streaming: false,
-      },
-    ];
-    for (const turnItem of items) {
-      const stored = yield* ingestor.ingestNormalized({
-        providerSessionId,
+it.effect(
+  "redacts saved-connection pairing input but keeps pairing URLs in command and message text",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      yield* eventSink.write({ events: [threadEvent] });
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
         providerInstanceId: modelSelection.instanceId,
         threadId: threadEvent.threadId,
-        event: { type: "turn_item.updated", driver: CODEX_DRIVER, turnItem },
       });
-      assert.notInclude(JSON.stringify(stored), secret);
-    }
-    const records = yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadRecords(
-      threadEvent.threadId,
-      ["turnItems"],
-    );
-    assert.lengthOf(records.turnItems, 3);
-    assert.notInclude(JSON.stringify(records.turnItems), secret);
-  }).pipe(Effect.provide(layerTest)),
+      const secret = "pairing-ingestion-secret";
+      const pairingUrl = `https://foo.test/pair#token=${secret}`;
+      const base = {
+        threadId: threadEvent.threadId,
+        runId: null,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        status: "completed" as const,
+        title: "Pairing",
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+      };
+      const items: OrchestrationV2TurnItem[] = [
+        {
+          ...base,
+          id: TurnItemId.make("privacy:tool"),
+          ordinal: 1,
+          type: "dynamic_tool",
+          toolName: "mcp__t3_code__t3_saved_connection_add",
+          input: { pairingUrl },
+          output: "pending",
+        },
+        {
+          ...base,
+          id: TurnItemId.make("privacy:command"),
+          ordinal: 2,
+          type: "command_execution",
+          input: "mint-pairing-link",
+          output: pairingUrl,
+        },
+        {
+          ...base,
+          id: TurnItemId.make("privacy:message"),
+          ordinal: 3,
+          type: "assistant_message",
+          messageId: MessageId.make("privacy:message"),
+          text: pairingUrl,
+          streaming: false,
+        },
+      ];
+      for (const turnItem of items) {
+        const stored = yield* ingestor.ingestNormalized({
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId: threadEvent.threadId,
+          event: { type: "turn_item.updated", driver: CODEX_DRIVER, turnItem },
+        });
+        const expectSecret = turnItem.type === "dynamic_tool" ? assert.notInclude : assert.include;
+        expectSecret(JSON.stringify(stored), secret);
+      }
+      const records = yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadRecords(
+        threadEvent.threadId,
+        ["turnItems"],
+      );
+      assert.lengthOf(records.turnItems, 3);
+      for (const record of records.turnItems) {
+        const expectSecret = record.type === "dynamic_tool" ? assert.notInclude : assert.include;
+        expectSecret(JSON.stringify(record), secret);
+      }
+    }).pipe(Effect.provide(layerTest)),
 );

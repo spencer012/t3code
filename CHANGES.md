@@ -28,8 +28,10 @@ the desktop or web app.
   the call return the answer itself. A waiting call replaces the notification;
   if it ends without returning the outcome (interrupt, failure), it sends the
   notification it suppressed. Never wait by default.
-- Keep pairing URLs in server memory only. Cards, events, notifications, provider
-  logs, and normalized tool-call inputs must contain no pairing token. Decline,
+- Keep the tool's pairing URL in server memory only. Cards, notifications, and the
+  `t3_saved_connection_add` input in events and provider logs must contain no
+  pairing token. Do not scrub pairing URLs from ordinary agent text or command
+  output; users need to copy links an agent mints for them. Decline,
   completion, expiry, Stop, and archive discard it. A restarted server cannot
   resume redemption; clicking its old card reports a failure and asks for a new link.
 - One client may claim each card. Lost clients expire after two minutes; unanswered
