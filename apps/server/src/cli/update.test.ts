@@ -640,7 +640,11 @@ it.layer(NodeServices.layer)("t3 update with a background service", (it) => {
       );
     }).pipe(
       Effect.provideService(HostProcess.Platform, "linux"),
-      Effect.provideService(HostProcess.Environment, { PATH: "" }),
+      Effect.provideService(HostProcess.Environment, {
+        PATH: "",
+        // The package version may be a custom build, which only updates from a mirror.
+        T3CODE_RELEASE_BASE_URL: "https://mirror.example/t3",
+      }),
     ),
   );
 });
