@@ -211,11 +211,11 @@ keep these refusals ahead of any download or cache reuse.
 Requested on 2026-10-18.
 
 Keep all local customizations on `custom`, rebased onto
-upstream main at `19a2bad155`. This branch includes the private release channel,
+upstream main at `ff7aa5ace3`. This branch includes the private release channel,
 saved-connection request cards with JSON results and optional waiting, provider
 quota reads, custom branding, and the SFW build wrappers.
 Use this branch for future custom releases instead of developing each feature on
-separate long-lived branches. The release version is `0.1.6-custom.2`.
+separate long-lived branches. The release version is `0.1.7-custom.1`.
 
 ## Continuous usage-limit recovery removed
 
