@@ -153,6 +153,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, NetService.layer))
               ),
               install: () => Effect.die("another home's service is not reinstalled"),
               uninstall: Effect.succeed(false),
+              realign: Effect.succeed(false),
             }),
           ),
         );
