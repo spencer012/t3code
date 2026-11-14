@@ -210,7 +210,9 @@ and publishing script are deployment details kept outside this repository.
   host, cross-building the Windows installer. The resource monitor links for
   `x86_64-pc-windows-msvc` with lld-link against an `xwin splat` of the MSVC
   CRT and Windows SDK. The bundle self-check needs a Windows host, so that
-  build skips it.
+  build skips it. With `T3CODE_ANDROID_KEYSTORE` set it also builds the
+  Android preview APK with OTA updates disabled, signed by that keystore and
+  verified against it, so the APK updates the already installed app.
 
 When adopting upstream changes to release discovery or runtime installation,
 keep these refusals ahead of any download or cache reuse.
