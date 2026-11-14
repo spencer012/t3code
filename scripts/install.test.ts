@@ -40,6 +40,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer home
             ...process.env,
             HOME: root,
             T3CODE_HOME: homeName,
+            T3CODE_CHANNEL: "stable",
             T3CODE_VERSION: version,
             T3CODE_INSTALL_BIN_DIR: NodePath.dirname(launcher),
             T3CODE_RELEASE_BASE_URL: "http://127.0.0.1:1",
@@ -162,7 +163,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")(
               {
                 env: {
                   ...process.env,
-                  T3CODE_CHANNEL: "",
+                  T3CODE_CHANNEL: "stable",
                   T3CODE_VERSION: "1.2.3",
                   T3CODE_HOME: NodePath.join(root, "home"),
                   T3CODE_INSTALL_BIN_DIR: NodePath.join(root, "bin"),
@@ -210,7 +211,7 @@ async function installOver(input: {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     env: {
       ...process.env,
-      T3CODE_CHANNEL: "",
+      T3CODE_CHANNEL: "stable",
       T3CODE_VERSION: "1.2.3",
       T3CODE_HOME: input.home,
       T3CODE_INSTALL_BIN_DIR: input.binDir,
@@ -495,6 +496,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chec
                   env: {
                     ...process.env,
                     PATH: tools,
+                    T3CODE_CHANNEL: "stable",
                     T3CODE_VERSION: version,
                     T3CODE_HOME: home,
                     T3CODE_INSTALL_BIN_DIR: NodePath.join(root, "bin"),

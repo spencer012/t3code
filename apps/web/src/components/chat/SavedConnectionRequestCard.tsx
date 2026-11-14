@@ -38,62 +38,62 @@ export function SavedConnectionRequestCard(props: {
   const [error, setError] = useState<string | null>(null);
   const [needsReceipt, setNeedsReceipt] = useState(false);
 
-  const send = async (action: "claim" | "decline" | "receipt") => {
+  const submit = async (action: "claim" | "decline" | "receipt") => {
+    if (action !== "receipt") {
+      const claimId = randomUUID();
+      const claimed = await respond({
+        environmentId,
+        input: {
+          threadId: item.threadId,
+          turnItemId: item.id,
+          answer: action === "decline" ? { type: "decline" } : { type: "claim", claimId },
+        },
+      });
+      if (claimed._tag === "Failure") {
+        setError("Could not answer this card. Refresh the thread and try again.");
+        return;
+      }
+      if (action === "decline" || claimed.value.request.connectionStatus !== "claimed") return;
+      // The token goes straight from the ephemeral response to normal onboarding.
+      // No React state, toast, log, or persisted completion holds it.
+      const result = await execute({
+        request: claimed.value.request,
+        pairingUrl: claimed.value.pairingUrl,
+        sourceEnvironmentId: environmentId,
+      });
+      completion.current = {
+        threadId: item.threadId,
+        turnItemId: item.id,
+        answer: {
+          type: "complete",
+          claimId,
+          outcome:
+            result._tag === "Success" ? result.value : { type: "failed", reason: "client_failed" },
+        },
+      };
+    }
+    if (completion.current === null) return;
+    const finished = await respond({ environmentId, input: completion.current });
+    if (finished._tag === "Failure") {
+      setNeedsReceipt(true);
+      setError(
+        "The app finished the action but could not notify the agent. Retry sending its result.",
+      );
+    } else {
+      completion.current = null;
+      setNeedsReceipt(false);
+    }
+  };
+  // Promise.finally rather than a finally block, which React Compiler cannot analyze.
+  const send = (action: "claim" | "decline" | "receipt") => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
-    try {
-      if (action !== "receipt") {
-        const claimId = randomUUID();
-        const claimed = await respond({
-          environmentId,
-          input: {
-            threadId: item.threadId,
-            turnItemId: item.id,
-            answer: action === "decline" ? { type: "decline" } : { type: "claim", claimId },
-          },
-        });
-        if (claimed._tag === "Failure") {
-          setError("Could not answer this card. Refresh the thread and try again.");
-          return;
-        }
-        if (action === "decline" || claimed.value.request.connectionStatus !== "claimed") return;
-        // The token goes straight from the ephemeral response to normal onboarding.
-        // No React state, toast, log, or persisted completion holds it.
-        const result = await execute({
-          request: claimed.value.request,
-          pairingUrl: claimed.value.pairingUrl,
-          sourceEnvironmentId: environmentId,
-        });
-        completion.current = {
-          threadId: item.threadId,
-          turnItemId: item.id,
-          answer: {
-            type: "complete",
-            claimId,
-            outcome:
-              result._tag === "Success"
-                ? result.value
-                : { type: "failed", reason: "client_failed" },
-          },
-        };
-      }
-      if (completion.current === null) return;
-      const finished = await respond({ environmentId, input: completion.current });
-      if (finished._tag === "Failure") {
-        setNeedsReceipt(true);
-        setError(
-          "The app finished the action but could not notify the agent. Retry sending its result.",
-        );
-      } else {
-        completion.current = null;
-        setNeedsReceipt(false);
-      }
-    } finally {
+    return submit(action).finally(() => {
       inFlight.current = false;
       setBusy(false);
-    }
+    });
   };
   const actionable = props.visibility === "local" && item.connectionStatus === "pending";
   return (

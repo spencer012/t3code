@@ -218,6 +218,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: HttpClient.make((request) => {
           requests.push(request.url);
           const isChecksums = request.url.endsWith("/SHA256SUMS");
@@ -284,6 +285,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: HttpClient.make((request) => {
           if (request.url.endsWith("/SHA256SUMS")) {
             checksumRanges.push(request.headers["range"]);
@@ -404,6 +406,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         path,
         platform: "linux",
         arch: "x64",
+        runningVersion: "1.0.0",
         httpClient: HttpClient.make((request) => {
           requests += 1;
           return Effect.fail(
