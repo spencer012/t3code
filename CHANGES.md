@@ -206,6 +206,11 @@ and publishing script are deployment details kept outside this repository.
   install` and `sfw vp run dist:desktop:artifact`. `-LinuxRuntime <archive>`
   reuses a Linux runtime already built from the same commit instead of
   running the Docker build.
+- `scripts/build-custom-on-linux.sh` builds both outputs natively on a Linux
+  host, cross-building the Windows installer. The resource monitor links for
+  `x86_64-pc-windows-msvc` with lld-link against an `xwin splat` of the MSVC
+  CRT and Windows SDK. The bundle self-check needs a Windows host, so that
+  build skips it.
 
 When adopting upstream changes to release discovery or runtime installation,
 keep these refusals ahead of any download or cache reuse.
