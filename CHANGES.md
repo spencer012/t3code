@@ -82,6 +82,16 @@ Only this checkout pushes `custom`, so rebasing its published history is fine;
 people start building on `custom`, merge `upstream/main` instead of rebasing.
 When the developer requests a new feature, rebase onto the latest `upstream/main`
 before starting it unless they explicitly say not to (requested 2026-10-22).
+Also rebase before making any other change in this checkout, including builds
+and releases, when the last rebase was more than 12 hours ago (requested
+2026-11-16). Questions that change nothing do not trigger a rebase. A rebase
+rewrites every custom commit, so the oldest one's committer date is the time of
+the last rebase:
+
+```sh
+git log --reverse --format=%cI "$(git merge-base HEAD upstream/main)..HEAD" | head -1
+```
+
 Do not automatically rebase a dirty checkout or chase every upstream commit while
 a feature is being implemented. Do not resolve conflicts by blindly selecting
 all local or all upstream versions.
@@ -222,7 +232,7 @@ keep these refusals ahead of any download or cache reuse.
 Requested on 2026-10-18.
 
 Keep all local customizations on `custom`, rebased onto
-upstream main at `20ee041354`. This branch includes the private release channel,
+upstream main at `6b7027b1f4`. This branch includes the private release channel,
 saved-connection request cards with JSON results and optional waiting, provider
 quota reads, custom branding, and the SFW build wrappers.
 Use this branch for future custom releases instead of developing each feature on
