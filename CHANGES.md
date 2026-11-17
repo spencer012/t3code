@@ -92,6 +92,10 @@ the last rebase:
 git log --reverse --format=%cI "$(git merge-base HEAD upstream/main)..HEAD" | head -1
 ```
 
+After a successful rebase, push it right away with
+`git push --force-with-lease origin custom`, without asking again (requested
+2026-11-17).
+
 Do not automatically rebase a dirty checkout or chase every upstream commit while
 a feature is being implemented. Do not resolve conflicts by blindly selecting
 all local or all upstream versions.
@@ -232,11 +236,11 @@ keep these refusals ahead of any download or cache reuse.
 Requested on 2026-10-18.
 
 Keep all local customizations on `custom`, rebased onto
-upstream main at `6b7027b1f4`. This branch includes the private release channel,
+upstream main at `a774d7f473`. This branch includes the private release channel,
 saved-connection request cards with JSON results and optional waiting, provider
 quota reads, custom branding, and the SFW build wrappers.
 Use this branch for future custom releases instead of developing each feature on
-separate long-lived branches. The release version is `0.1.9-custom.1`.
+separate long-lived branches. The release version is `0.1.10-custom.1`.
 
 ## Continuous usage-limit recovery removed
 
