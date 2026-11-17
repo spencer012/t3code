@@ -48,16 +48,38 @@ describe("resolvePendingUserInputAnswer", () => {
         { selectedOptionValues: ["Orchestration-first"] },
         "",
       ),
-    ).toEqual({ customAnswer: "" });
+    ).toEqual({ customAnswer: "", selectedOptionValues: ["Orchestration-first"] });
   });
 
-  it("prefers a custom answer over selected options", () => {
+  it("sends typed text as a note after the selected options", () => {
+    const typed = setPendingUserInputCustomAnswer(
+      singleSelectQuestion,
+      { selectedOptionValues: ["Orchestration-first"] },
+      " Keep the existing envelope for one release ",
+    );
     expect(
-      resolvePendingUserInputAnswer(singleSelectQuestion, {
-        selectedOptionValues: ["Orchestration-first"],
-        customAnswer: "Keep the existing envelope for one release",
-      }),
-    ).toBe("Keep the existing envelope for one release");
+      isPendingUserInputOptionSelected(singleSelectQuestion, typed, "Orchestration-first"),
+    ).toBe(true);
+    expect(resolvePendingUserInputAnswer(singleSelectQuestion, typed)).toEqual([
+      "Orchestration-first",
+      "Keep the existing envelope for one release",
+    ]);
+    const reselected = togglePendingUserInputOptionSelection(
+      singleSelectQuestion,
+      typed,
+      "Node.js",
+    );
+    expect(resolvePendingUserInputAnswer(singleSelectQuestion, reselected)).toEqual([
+      "Node.js",
+      "Keep the existing envelope for one release",
+    ]);
+    const multiSelect = { ...singleSelectQuestion, multiSelect: true };
+    expect(
+      resolvePendingUserInputAnswer(
+        multiSelect,
+        togglePendingUserInputOptionSelection(multiSelect, reselected, "Orchestration-first"),
+      ),
+    ).toEqual(["Node.js", "Orchestration-first", "Keep the existing envelope for one release"]);
   });
 
   it("does not replace a required choice with a custom answer", () => {

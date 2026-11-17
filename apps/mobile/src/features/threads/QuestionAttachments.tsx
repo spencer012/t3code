@@ -211,7 +211,11 @@ export function QuestionAttachments(props: {
             focusedRef.current = false;
             onInputFocusChange?.(false);
           }}
-          placeholder={gt("Or type a custom answer")}
+          placeholder={
+            props.question.options.length === 0
+              ? gt("Type your answer")
+              : gt("Type your own answer, or add a note to the selected option")
+          }
           className="min-h-[54px] rounded-2xl border border-input-border bg-input px-3.5 py-3 font-sans text-base text-foreground"
         />
       </TextInputWrapper>

@@ -260,3 +260,21 @@ can be published. Keep that rule when merging upstream changes to `AGENTS.md`.
 This branch's history was rewritten on 2026-10-19 to remove such details. Local
 branches created before then, including `backup/*`, still contain them and must
 not be pushed.
+
+## Question answers combine options and typed text
+
+Requested on 2026-11-17.
+
+When a question accepts typed answers, picking an option no longer clears the
+composer text and typing no longer clears the selection. Both are sent: the
+answer is the selected option values followed by the text as one more entry
+(`[...selected, text]`), the same shape attachment references already use. On
+web, a single-select click still advances right away, so the note has to be
+typed before the option is picked.
+
+Adapters read entries that match no option as the user's note. Claude sends
+them as `annotations[question].notes`, OpenCode over ACP sends them in the
+`_custom` companion field, and Pi joins them into its single dialog value. Codex,
+Grok, Muse and OpenCode keep their native array handling. When upstream changes
+`packages/client-runtime/src/state/pendingUserInput.ts` or an adapter's answer
+mapping, keep this shape and each adapter's handling of it.

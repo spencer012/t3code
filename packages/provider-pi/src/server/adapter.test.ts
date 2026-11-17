@@ -5600,6 +5600,30 @@ describe("PiAdapterV2", () => {
       const response = yield* fake.takeRequest("extension_ui_response");
       assert.equal(response["value"], "");
       assert.isUndefined(response["cancelled"]);
+
+      yield* fake.emit({
+        type: "extension_ui_request",
+        id: "ui-select-note",
+        method: "select",
+        title: "Pick a tag",
+        options: ["stable", ""],
+      });
+      const firstRequestId = event.turnItem.requestId;
+      const noted = yield* takeEvent(
+        (next) =>
+          next.type === "turn_item.updated" &&
+          next.turnItem.type === "user_input_request" &&
+          next.turnItem.requestId !== firstRequestId,
+      );
+      if (noted.type !== "turn_item.updated" || noted.turnItem.type !== "user_input_request") {
+        return assert.fail("expected a second user input request");
+      }
+      // A choice with a typed note reaches Pi's single-value dialog as one text answer.
+      yield* runtime.respondToRuntimeRequest({
+        requestId: noted.turnItem.requestId,
+        answers: { "ui-select-note": ["stable", "pin it"] },
+      });
+      assert.equal((yield* fake.takeRequest("extension_ui_response"))["value"], "stable\n\npin it");
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 

@@ -115,6 +115,10 @@ describe("OpenCode ACP question form", () => {
       action: "accept",
       content: { q0: "blue", q0_custom: `Blue${attachment}` },
     });
+    expect(form?.respond({ q0: ["blue", "but darker", attachment.trim()] })).toEqual({
+      action: "accept",
+      content: { q0: "blue", q0_custom: `Blue\n\nbut darker${attachment}` },
+    });
   });
 
   it("cancels empty or multi-value answers to a single-select question", () => {

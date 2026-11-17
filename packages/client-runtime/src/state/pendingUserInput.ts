@@ -57,7 +57,11 @@ export function normalizeSelectedOptionValues(
   );
 }
 
-/** The answer to submit for one question, or null while it is unanswered. */
+/**
+ * The answer to submit for one question, or null while it is unanswered. Text typed beside a
+ * selection follows the selected values as one more entry; adapters treat entries that match no
+ * option as the user's note.
+ */
 export function resolvePendingUserInputAnswer(
   question: PendingUserInputQuestion,
   draft: PendingUserInputDraftAnswer | undefined,
@@ -69,24 +73,25 @@ export function resolvePendingUserInputAnswer(
       : question.initialAnswer !== undefined
         ? (draft?.customAnswer ?? null)
         : normalizeDraftAnswer(draft?.customAnswer);
+  const selected = normalizeSelectedOptionValues(question, draft?.selectedOptionValues).slice(
+    0,
+    question.multiSelect ? undefined : 1,
+  );
+  if (selected.length > 0) {
+    if (customAnswer !== null && customAnswer.length > 0) return [...selected, customAnswer];
+    return question.multiSelect ? selected : selected[0]!;
+  }
   if (customAnswer !== null && customAnswer.length > 0) {
     return customAnswer;
   }
   if (question.required === false && question.options.length === 0) {
     return "";
   }
-
-  const selectedOptionValues = normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
   const fallback =
     customAnswer ??
     (question.allowCustomAnswer !== false && (draft?.attachmentCount ?? 0) > 0 ? "" : null);
-  if (question.multiSelect) {
-    // Checking nothing answers "none of these" unless the provider requires a choice.
-    return selectedOptionValues.length > 0
-      ? selectedOptionValues
-      : (fallback ?? (question.required ? null : []));
-  }
-  return selectedOptionValues[0] ?? fallback;
+  // Checking nothing answers "none of these" unless the provider requires a choice.
+  return question.multiSelect ? (fallback ?? (question.required ? null : [])) : fallback;
 }
 
 export function setPendingUserInputCustomAnswer(
@@ -97,14 +102,10 @@ export function setPendingUserInputCustomAnswer(
   if (question.allowCustomAnswer === false) {
     return draft ?? {};
   }
-
-  const selectedOptionValues =
-    question.initialAnswer !== undefined || customAnswer.trim().length > 0
-      ? undefined
-      : normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
+  const selectedOptionValues = normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
   return {
     customAnswer,
-    ...(selectedOptionValues && selectedOptionValues.length > 0 ? { selectedOptionValues } : {}),
+    ...(selectedOptionValues.length > 0 ? { selectedOptionValues } : {}),
   };
 }
 
@@ -113,10 +114,6 @@ export function isPendingUserInputOptionSelected(
   draft: PendingUserInputDraftAnswer | undefined,
   optionValue: string,
 ): boolean {
-  if (question.allowCustomAnswer !== false && normalizeDraftAnswer(draft?.customAnswer)) {
-    return false;
-  }
-
   const resolvedOptionValue = resolvePendingUserInputOptionValue(question, optionValue);
   return (
     resolvedOptionValue !== null &&
@@ -126,7 +123,7 @@ export function isPendingUserInputOptionSelected(
   );
 }
 
-/** Toggles an offered option. An unknown option returns the same draft. */
+/** Toggles an offered option, keeping any typed text. An unknown option returns the same draft. */
 export function togglePendingUserInputOptionSelection(
   question: PendingUserInputQuestion,
   draft: PendingUserInputDraftAnswer | undefined,
@@ -137,26 +134,18 @@ export function togglePendingUserInputOptionSelection(
     return draft ?? {};
   }
 
-  if (question.multiSelect) {
-    const selectedOptionValues = normalizeSelectedOptionValues(
-      question,
-      draft?.selectedOptionValues,
-    );
-    const nextSelectedOptionValues = selectedOptionValues.includes(resolvedOptionValue)
+  const selectedOptionValues = normalizeSelectedOptionValues(question, draft?.selectedOptionValues);
+  const nextSelectedOptionValues = !question.multiSelect
+    ? [resolvedOptionValue]
+    : selectedOptionValues.includes(resolvedOptionValue)
       ? selectedOptionValues.filter((value) => value !== resolvedOptionValue)
       : [...selectedOptionValues, resolvedOptionValue];
 
-    return {
-      customAnswer: "",
-      ...(nextSelectedOptionValues.length > 0
-        ? { selectedOptionValues: nextSelectedOptionValues }
-        : {}),
-    };
-  }
-
   return {
-    customAnswer: "",
-    selectedOptionValues: [resolvedOptionValue],
+    ...(draft?.customAnswer === undefined ? {} : { customAnswer: draft.customAnswer }),
+    ...(nextSelectedOptionValues.length > 0
+      ? { selectedOptionValues: nextSelectedOptionValues }
+      : {}),
   };
 }
 

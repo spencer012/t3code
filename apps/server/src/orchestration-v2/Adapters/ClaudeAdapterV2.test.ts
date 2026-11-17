@@ -597,15 +597,31 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
         },
       ],
     );
-    const sdkAnswers: NonNullable<AskUserQuestionInput["answers"]> =
-      ClaudeAdapterV2.claudeSdkUserInputAnswers({
-        "Which approach?": ["Simple", "Safe"],
-        "Deploy now?": "Yes",
-      });
-    assert.deepEqual(sdkAnswers, {
-      "Which approach?": "Simple, Safe",
-      "Deploy now?": "Yes",
+    const questions = [
+      { id: "Which approach?", options: [{ label: "Simple" }, { label: "Safe" }] },
+      { id: "Deploy now?", options: [{ label: "Yes" }, { label: "No" }] },
+    ];
+    const respond = (answers: Record<string, unknown>): Partial<AskUserQuestionInput> =>
+      ClaudeAdapterV2.claudeSdkUserInputResponse(questions, answers);
+    assert.deepEqual(respond({ "Which approach?": ["Simple", "Safe"], "Deploy now?": "Yes" }), {
+      answers: { "Which approach?": "Simple, Safe", "Deploy now?": "Yes" },
     });
+    assert.deepEqual(respond({ "Deploy now?": "Only after the migration" }), {
+      answers: { "Deploy now?": "Only after the migration" },
+    });
+    assert.deepEqual(
+      respond({
+        "Which approach?": ["Simple", "Safe", "Start with Simple"],
+        "Deploy now?": ["No", "Wait for CI"],
+      }),
+      {
+        answers: { "Which approach?": "Simple, Safe", "Deploy now?": "No" },
+        annotations: {
+          "Which approach?": { notes: "Start with Simple" },
+          "Deploy now?": { notes: "Wait for CI" },
+        },
+      },
+    );
     assert.isTrue(
       ClaudeAdapterV2.ClaudeProviderCapabilitiesV2.planning.supportsStructuredQuestions,
     );

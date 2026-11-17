@@ -4925,7 +4925,10 @@ function piUiResponse(
     if (decision === "decline") return { confirmed: false };
     return { cancelled: true };
   }
-  const answer = answers?.[pending.questionId];
+  const raw = answers?.[pending.questionId];
+  // Pi takes one value, so a choice with typed text becomes free text, as attachments do.
+  const answer =
+    Array.isArray(raw) && raw.length > 0 && raw.every(Predicate.isString) ? raw.join("\n\n") : raw;
   // RPC distinguishes empty dialog values from cancellation (undefined).
   if (typeof answer === "string") return { value: answer };
   return { cancelled: true };

@@ -52,8 +52,8 @@ const findChoice = (options: ReadonlyArray<Option>, value: string) =>
   options.find((option) => option.value === value);
 
 // OpenCode 2.1 asks through ACP with a `qN` choice field plus a `qN_custom` companion.
-// Multi-select forms stay with the generic mapping: it keeps the companion as its own
-// question, and clients cannot yet send selected choices and custom text as one answer.
+// Multi-select forms stay with the generic mapping, which keeps the companion as its own
+// question.
 export const extractOpenCodeElicitationForm: NonNullable<
   AcpAdapterV2Flavor["extractElicitationForm"]
 > = (request) => {
@@ -104,9 +104,24 @@ export const extractOpenCodeElicitationForm: NonNullable<
     respond: (answers) => {
       const content: Record<string, string> = {};
       for (const question of questions) {
-        const answer = Object.hasOwn(answers, question.id) ? answers[question.id] : undefined;
-        if (!Predicate.isString(answer)) return { action: "cancel" };
+        const raw = Object.hasOwn(answers, question.id) ? answers[question.id] : undefined;
         const companionId = `${question.id}${companionSuffix}`;
+        const values = Array.isArray(raw) ? raw : [raw];
+        if (!values.every(Predicate.isString)) return { action: "cancel" };
+        const choices = values.flatMap((value) => findChoice(question.options, value) ?? []);
+        if (choices.length > 1) return { action: "cancel" };
+        const [choice] = choices;
+        // A choice with typed text arrives as [choice, ...text], like an attachment suffix.
+        if (choice !== undefined && values.length > 1) {
+          if (!withCompanion.has(question.id)) return { action: "cancel" };
+          content[question.id] = choice.value ?? choice.label;
+          content[companionId] = [
+            choice.label,
+            ...values.filter((value) => value !== choice.value),
+          ].join("\n\n");
+          continue;
+        }
+        const answer = values.join("\n\n");
         const exact = findChoice(question.options, answer);
         if (exact !== undefined) {
           content[question.id] = answer;

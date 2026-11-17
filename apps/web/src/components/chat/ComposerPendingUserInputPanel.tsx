@@ -98,11 +98,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   // Keep question identity stable for its shortcut listener.
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
-  const customAnswerActive = progress.customAnswer.trim().length > 0;
   // Read before later hooks to preserve the question's compiler cache.
-  const draftSelectedOptions = activeQuestion?.options.map(
-    (option) =>
-      !customAnswerActive && progress.selectedOptionValues.includes(option.value ?? option.label),
+  const draftSelectedOptions = activeQuestion?.options.map((option) =>
+    progress.selectedOptionValues.includes(option.value ?? option.label),
   );
   const isCollapsed = collapsedQuestionId !== null && collapsedQuestionId === activeQuestion?.id;
 
@@ -111,8 +109,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     activeQuestion &&
     !activeQuestion.multiSelect &&
     (optimisticSingleSelect.questionId !== activeQuestion.id ||
-      (!customAnswerActive &&
-        progress.selectedOptionValues.includes(optimisticSingleSelect.optionValue)))
+      progress.selectedOptionValues.includes(optimisticSingleSelect.optionValue))
   ) {
     setOptimisticSingleSelect(null);
   }

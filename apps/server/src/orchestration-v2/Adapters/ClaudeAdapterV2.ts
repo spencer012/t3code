@@ -5915,19 +5915,35 @@ export function claudeUserInputQuestions(
   });
 }
 
-export function claudeSdkUserInputAnswers(
+/** Entries that match no offered label are the user's note on the options they selected. */
+export function claudeSdkUserInputResponse(
+  questions: ReadonlyArray<{
+    readonly id: string;
+    readonly options: ReadonlyArray<{ readonly label: string }>;
+  }>,
   answers: ProviderUserInputAnswers,
-): NonNullable<AskUserQuestionInput["answers"]> {
-  return Object.fromEntries(
-    Object.entries(answers).map(([question, answer]) => [
-      question,
-      Array.isArray(answer)
-        ? answer.filter((value): value is string => typeof value === "string").join(", ")
-        : typeof answer === "string"
-          ? answer
-          : String(answer ?? ""),
-    ]),
+): Pick<AskUserQuestionInput, "answers" | "annotations"> {
+  const resolved = Object.entries(answers).map(([question, answer]) => {
+    const values = Array.isArray(answer)
+      ? answer.filter((value): value is string => typeof value === "string")
+      : [typeof answer === "string" ? answer : String(answer ?? "")];
+    const labels = new Set(
+      questions.find((entry) => entry.id === question)?.options.map((option) => option.label),
+    );
+    const selected = values.filter((value) => labels.has(value));
+    const notes = values.filter((value) => !labels.has(value));
+    return selected.length === 0 || notes.length === 0
+      ? { question, answer: values.join(", ") }
+      : { question, answer: selected.join(", "), notes: notes.join("\n\n") };
+  });
+  // Entries, not assignment, so a question such as `__proto__` stays an own key.
+  const annotations = resolved.flatMap(({ question, notes }) =>
+    notes === undefined ? [] : [[question, { notes }] as const],
   );
+  return {
+    answers: Object.fromEntries(resolved.map(({ question, answer }) => [question, answer])),
+    ...(annotations.length === 0 ? {} : { annotations: Object.fromEntries(annotations) }),
+  };
 }
 
 function claudeTodoSteps(input: unknown): ReadonlyArray<OrchestrationV2PlanStep> {
@@ -13377,7 +13393,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   behavior: "allow",
                   updatedInput: {
                     questions: toolInput.questions,
-                    answers: claudeSdkUserInputAnswers(resolvedAnswers),
+                    ...claudeSdkUserInputResponse(questions, resolvedAnswers),
                   },
                   toolUseID: callbackOptions.toolUseID,
                 } satisfies PermissionResult);
