@@ -742,6 +742,8 @@ it.layer(NodeServices.layer)("t3 update checks the database before switching", (
         databasePath,
         serverRuntimeStatePath: path.join(baseDir, "server-runtime.json"),
         channel: undefined,
+        // An upstream running version; custom builds refuse non-custom targets first.
+        runningVersion: "0.1.9",
         requestedVersion: targetVersion,
         allowDowngrade: true,
         assumeYes: true,

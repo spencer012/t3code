@@ -606,6 +606,7 @@ if (process.env.T3_TEST_INSTALLER === 'first') await fetch(process.env.T3_TEST_O
                 ...process.env,
                 PATH: `${tools}:${process.env.PATH}`,
                 T3CODE_VERSION: version,
+                T3CODE_CHANNEL: "stable",
                 T3CODE_HOME: NodePath.join(root, "home"),
                 T3CODE_INSTALL_BIN_DIR: NodePath.join(root, "bin", id),
                 T3CODE_RELEASE_BASE_URL: origin,
