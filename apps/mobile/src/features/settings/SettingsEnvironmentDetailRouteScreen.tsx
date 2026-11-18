@@ -294,8 +294,10 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                     ) : null}
                     {!canCheckEnvironmentUpdate(config.environment.serverVersion) ? (
                       <Text className="text-sm text-foreground-muted">
-                        Custom build. Update it from the desktop app or with t3 update on this
-                        machine.
+                        <T>
+                          Custom build. Update it from the desktop app or with{" "}
+                          <Var>{"t3 update"}</Var> on this machine.
+                        </T>
                       </Text>
                     ) : checkedRelease?.targetVersion &&
                       !updatesDenial &&

@@ -5,6 +5,8 @@ import {
   type SavedConnectionRespondInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as ConnectionOnboarding from "./connection/onboarding.ts";
@@ -101,19 +103,31 @@ export const executeSavedConnectionRequest = Effect.fnUntraced(function* (
   );
 });
 
-export function savedConnectionOutcomeText(card: SavedConnectionRequestResult) {
+export function savedConnectionOutcomeText(
+  card: SavedConnectionRequestResult,
+  resolve: MFunctionType = mFallback,
+) {
+  const label = card.resultLabel ?? card.label;
   switch (card.connectionStatus) {
     case "pending":
-      return `${card.operation === "add" ? "Add" : "Remove"} ${card.label}${card.operation === "add" && card.host !== undefined && card.label !== card.host ? ` (${card.host})` : ""} ${card.operation === "add" ? "to" : "from"} this app?`;
+      if (card.operation === "remove") {
+        return resolve(msg("Remove {label} from this app?", { label: card.label }));
+      }
+      return card.host !== undefined && card.label !== card.host
+        ? resolve(msg("Add {label} ({host}) to this app?", { label: card.label, host: card.host }))
+        : resolve(msg("Add {label} to this app?", { label: card.label }));
     case "claimed":
-      return "Another window is handling this saved connection request.";
+      return resolve(msg("Another window is handling this saved connection request."));
     case "added":
-      return `Added ${card.resultLabel ?? card.label} in the app that answered.`;
+      return resolve(msg("Added {label} in the app that answered.", { label }));
     case "removed":
-      return `Removed ${card.resultLabel ?? card.label} in the app that answered.`;
+      return resolve(msg("Removed {label} in the app that answered.", { label }));
     case "declined":
-      return `Declined to ${card.operation} ${card.label}.`;
+      return card.operation === "remove"
+        ? resolve(msg("Declined to remove {label}.", { label: card.label }))
+        : resolve(msg("Declined to add {label}.", { label: card.label }));
     case "failed":
+      // Server-authored, shared with the agent's tool result, so it stays English.
       return SAVED_CONNECTION_FAILURE_MESSAGES[card.failure ?? "client_failed"];
   }
 }

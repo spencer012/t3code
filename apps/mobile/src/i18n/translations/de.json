@@ -170,6 +170,14 @@
   "766ea446df1695f7": "Beantworte die Frage, um Nachrichten in der Warteschlange zu bearbeiten",
   "257dc29de5b1f1f7": "Kontext, kein Code",
   "edb97296086ba31e": "{count, plural, one {{count} Datei} other {{count} Dateien}}",
+  "fe5a1e22f6f5569c": "{label} aus dieser App entfernen?",
+  "0509863714001490": "{label} ({host}) zu dieser App hinzufügen?",
+  "b893af6a326fd9bf": "{label} zu dieser App hinzufügen?",
+  "8f2f458bb3f886c3": "Ein anderes Fenster bearbeitet diese Anfrage zur gespeicherten Verbindung.",
+  "14b8dab1cbb4a49b": "{label} wurde in der App hinzugefügt, die geantwortet hat.",
+  "45317a314eab3f9d": "{label} wurde in der App entfernt, die geantwortet hat.",
+  "48a4673e82687135": "Entfernen von {label} abgelehnt.",
+  "c5fc2abf65d52775": "Hinzufügen von {label} abgelehnt.",
   "556df31b330166ff": "Gib einen Namen für diese Ansicht ein.",
   "262cd2c6c05667db": "Verwende höchstens {max} Zeichen.",
   "3a85d6e4f8a78c72": "Eine Ansicht mit diesem Namen existiert bereits.",
@@ -1395,7 +1403,6 @@
   "ae2263d9d6e71fd8": "Vorschau",
   "525f2b92a20a9707": "Beta",
   "72204cfcf2944f48": "Mobile Steuerung für deine laufenden Coding-Umgebungen",
-  "30958cbc5d9ac66a": "T3 Code, Threads",
   "b8d326a59c6b0fa5": "Hochladen von {name} wiederholen",
   "3db94ecff966e631": "{name} wird hochgeladen, {percent} %",
   "1c79d42e902ff431": "Wiederholen",
@@ -1570,6 +1577,7 @@
   "49a888ab323521ae": "Thread geforkt",
   "5d865442753ef6c2": "Thread erstellt",
   "3ccfbf7e86868c35": "Feedback für das T3-Team",
+  "80e5ed357285ff18": "{operation} {label}. Öffne die Desktop- oder Web-App, um zu antworten.",
   "3604d2f52be9539e": "{target} verknüpfen",
   "646de37e0bec85f8": "Tool-Aufruf",
   "5469bba2f5569925": "Vorgeschlagener Plan",
@@ -2327,6 +2335,7 @@
   ],
   "17d363d5ff1f038f": "{seconds, plural, one {Noch etwa {seconds} Sekunde} other {Noch etwa {seconds} Sekunden}}",
   "bc86d0e75a37411b": "{minutes, plural, one {Noch etwa {minutes} Minute} other {Noch etwa {minutes} Minuten}}",
+  "30958cbc5d9ac66a": "T3 Code, Threads",
   "89555f39918ea6cc": "Threads durchsuchen",
   "889266d70ae46113": "Thread-Nachrichten werden durchsucht…",
   "35727ced1d37da7f": "Suche nach „{query}“ in Nachrichten.",
@@ -3439,6 +3448,16 @@
       "v": "v"
     }
   ],
+  "145fe9b4f0de98af": [
+    "Eigener Build. Aktualisiere ihn über die Desktop-App oder mit",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " auf diesem Rechner."
+  ],
   "d3284a7eb4a66f1b": "Aktualisiere diesen Anbieter auf dem Rechner der Umgebung.",
   "9e6fea22be042adc": "Cloud-Umgebungen aktualisieren",
   "a76020f46d881eee": "Einreihen",
@@ -4540,7 +4559,8 @@
     " · Läuft eigenständig"
   ],
   "6f2479ee100ebe84": "Zu viele Anhänge.",
-  "01ae9b8989442ac6": "Oder gib eine eigene Antwort ein",
+  "9a3db19d3e12dea6": "Gib deine Antwort ein",
+  "f961ba8017e08132": "Gib deine eigene Antwort ein oder füge der ausgewählten Option eine Notiz hinzu",
   "802a10810a7f044e": "{host} öffnen",
   "9fac16daf3b3ab10": "Wert",
   "9605dc349bd2c872": "Referenz für {label} in {source}",

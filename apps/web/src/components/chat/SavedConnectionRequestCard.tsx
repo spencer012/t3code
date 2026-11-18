@@ -6,6 +6,7 @@ import type {
   OrchestrationV2TurnItem,
   SavedConnectionRespondInput,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react";
 import { useRef, useState } from "react";
 import { randomUUID } from "../../lib/utils";
 import { executeSavedConnection } from "../../connection/onboarding";
@@ -21,6 +22,8 @@ export function SavedConnectionRequestCard(props: {
   visibility: OrchestrationV2ProjectedTurnItem["visibility"];
 }) {
   const { item, environmentId } = props;
+  const gt = useGT();
+  const m = useMessages();
   const respond = useAtomCommand(serverEnvironment.respondSavedConnectionRequest, {
     reportFailure: false,
     reportDefect: false,
@@ -50,7 +53,7 @@ export function SavedConnectionRequestCard(props: {
         },
       });
       if (claimed._tag === "Failure") {
-        setError("Could not answer this card. Refresh the thread and try again.");
+        setError(gt("Could not answer this card. Refresh the thread and try again."));
         return;
       }
       if (action === "decline" || claimed.value.request.connectionStatus !== "claimed") return;
@@ -77,7 +80,7 @@ export function SavedConnectionRequestCard(props: {
     if (finished._tag === "Failure") {
       setNeedsReceipt(true);
       setError(
-        "The app finished the action but could not notify the agent. Retry sending its result.",
+        gt("The app finished the action but could not notify the agent. Retry sending its result."),
       );
     } else {
       completion.current = null;
@@ -103,15 +106,17 @@ export function SavedConnectionRequestCard(props: {
     >
       <p className="text-sm font-medium">
         {busy
-          ? "Updating saved connections..."
-          : savedConnectionOutcomeText({ ...item, turnItemId: item.id })}
+          ? gt("Updating saved connections...")
+          : savedConnectionOutcomeText({ ...item, turnItemId: item.id }, m)}
       </p>
       {actionable ? (
         <>
           <p className="text-xs text-muted-foreground">
             {item.operation === "remove"
-              ? "This forgets the connection, credentials, and cached threads on this device. The remote machine stays running."
-              : "This app will redeem the pairing link and save the connection."}
+              ? gt(
+                  "This forgets the connection, credentials, and cached threads on this device. The remote machine stays running.",
+                )
+              : gt("This app will redeem the pairing link and save the connection.")}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -119,14 +124,16 @@ export function SavedConnectionRequestCard(props: {
               variant={item.operation === "remove" ? "destructive" : "default"}
               onClick={() => void send("claim")}
             >
-              {item.operation === "add" ? "Add" : "Remove"}
+              {item.operation === "add"
+                ? gt("Add", { $context: "verb, saves a connection" })
+                : gt("Remove", { $context: "verb, forgets a saved connection" })}
             </Button>
             <Button
               disabled={busy || !allowed}
               variant="ghost-muted"
               onClick={() => void send("decline")}
             >
-              Decline
+              <T>Decline</T>
             </Button>
           </div>
         </>
@@ -136,12 +143,12 @@ export function SavedConnectionRequestCard(props: {
       !busy &&
       !needsReceipt ? (
         <Button disabled={!allowed} variant="outline" onClick={() => void send("claim")}>
-          Check request
+          <T>Check request</T>
         </Button>
       ) : null}
       {needsReceipt ? (
         <Button disabled={busy || !allowed} variant="outline" onClick={() => void send("receipt")}>
-          Send result again
+          <T>Send result again</T>
         </Button>
       ) : null}
       {error ? (

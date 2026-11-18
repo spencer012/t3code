@@ -170,6 +170,14 @@
   "766ea446df1695f7": "Responda à pergunta para editar as mensagens na fila",
   "257dc29de5b1f1f7": "Contexto, sem código",
   "edb97296086ba31e": "{count, plural, one {{count} arquivo} other {{count} arquivos}}",
+  "fe5a1e22f6f5569c": "Remover {label} deste app?",
+  "0509863714001490": "Adicionar {label} ({host}) a este app?",
+  "b893af6a326fd9bf": "Adicionar {label} a este app?",
+  "8f2f458bb3f886c3": "Outra janela está tratando esta solicitação de conexão salva.",
+  "14b8dab1cbb4a49b": "{label} foi adicionado no app que respondeu.",
+  "45317a314eab3f9d": "{label} foi removido no app que respondeu.",
+  "48a4673e82687135": "A remoção de {label} foi recusada.",
+  "c5fc2abf65d52775": "A adição de {label} foi recusada.",
   "556df31b330166ff": "Digite um nome para esta visualização.",
   "262cd2c6c05667db": "Use no máximo {max} caracteres.",
   "3a85d6e4f8a78c72": "Já existe uma visualização com este nome.",
@@ -1395,7 +1403,6 @@
   "ae2263d9d6e71fd8": "Preview",
   "525f2b92a20a9707": "Beta",
   "72204cfcf2944f48": "Controle móvel dos seus ambientes de programação ativos",
-  "30958cbc5d9ac66a": "T3 Code, Threads",
   "b8d326a59c6b0fa5": "Tentar enviar {name} novamente",
   "3db94ecff966e631": "Enviando {name}, {percent}%",
   "1c79d42e902ff431": "Tentar novamente",
@@ -1571,6 +1578,7 @@
   "5d865442753ef6c2": "Thread criada",
   "3ccfbf7e86868c35": "Feedback para a equipe do T3",
   "3604d2f52be9539e": "Vincular {target}",
+  "80e5ed357285ff18": "{operation} {label}. Abra o app de desktop ou web para responder.",
   "646de37e0bec85f8": "Chamada de ferramenta",
   "5469bba2f5569925": "Plano proposto",
   "c3a88348c14f8258": "Plano atualizado",
@@ -2327,6 +2335,7 @@
   ],
   "17d363d5ff1f038f": "{seconds, plural, one {Cerca de {seconds} segundo restante} other {Cerca de {seconds} segundos restantes}}",
   "bc86d0e75a37411b": "{minutes, plural, one {Cerca de {minutes} minuto restante} other {Cerca de {minutes} minutos restantes}}",
+  "30958cbc5d9ac66a": "T3 Code, Threads",
   "89555f39918ea6cc": "Pesquisar threads",
   "889266d70ae46113": "Pesquisando nas mensagens das threads…",
   "35727ced1d37da7f": "Procurando \"{query}\" nas mensagens.",
@@ -3434,6 +3443,16 @@
       "v": "v"
     }
   ],
+  "145fe9b4f0de98af": [
+    "Build personalizado. Atualize pelo app de desktop ou com",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " nesta máquina."
+  ],
   "d3284a7eb4a66f1b": "Atualize este provedor na máquina do ambiente.",
   "9e6fea22be042adc": "Atualizar ambientes na nuvem",
   "a76020f46d881eee": "Enfileirar",
@@ -4534,7 +4553,8 @@
     " · Roda por conta própria"
   ],
   "6f2479ee100ebe84": "Anexos demais.",
-  "01ae9b8989442ac6": "Ou digite uma resposta personalizada",
+  "9a3db19d3e12dea6": "Digite sua resposta",
+  "f961ba8017e08132": "Digite sua própria resposta ou adicione uma nota à opção selecionada",
   "802a10810a7f044e": "Abrir {host}",
   "9fac16daf3b3ab10": "Valor",
   "9605dc349bd2c872": "Referência de {label} em {source}",
