@@ -179,7 +179,10 @@ older than that is re-checked before the read, because background refreshes
 only run while a client is in the foreground and OpenCode never refreshes its Go
 quota on an interval. Only enabled instances that report quota are re-checked;
 unsupported and disabled instances are not. Without the input, the read stays
-cache-only. Keep OpenCode Go accounts covered: each OpenCode instance reads its
+cache-only. `maxAgeSeconds` is a finite number, so the tool advertises a plain
+number with its minimum; `Schema.Number` would also offer the strings
+`Infinity`, `-Infinity` and `NaN`, which led an agent to conclude the parameter
+was refused. Keep OpenCode Go accounts covered: each OpenCode instance reads its
 own credentials and reports its own Go windows.
 
 ## Custom release channel

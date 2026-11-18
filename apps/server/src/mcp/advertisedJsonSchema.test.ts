@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";
 
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
+import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import { ThemeToolkit } from "./toolkits/theme/tools.ts";
 
 it("drops JSON noise, merges tagged unions, and keeps null where it is required", () => {
@@ -58,4 +59,12 @@ it("advertises only string enum values, which Gemini requires", () => {
   collect(advertisedJsonSchema(ThemeToolkit.tools.t3_theme_set));
 
   expect(enumValues.filter((value) => typeof value !== "string")).toEqual([]);
+});
+
+// Schema.Number adds an "Infinity" | "-Infinity" | "NaN" branch, so an agent sending "300" reads it as refused.
+it("advertises usage freshness as a plain number with its minimum", () => {
+  expect(advertisedJsonSchema(EnvironmentToolkit.tools.t3_provider_usage_limits)).toEqual({
+    type: "object",
+    properties: { maxAgeSeconds: { type: "number", minimum: 60 } },
+  });
 });

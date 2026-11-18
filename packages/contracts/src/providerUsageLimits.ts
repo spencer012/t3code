@@ -185,7 +185,7 @@ export type UsageLimitsReport = typeof UsageLimitsReport.Type;
 
 /** Re-checks quota older than `maxAgeSeconds` before reading; the floor keeps polling cheap. */
 export const ProviderUsageLimitsMcpInput = Schema.Struct({
-  maxAgeSeconds: Schema.optionalKey(Schema.Number.check(Schema.isGreaterThanOrEqualTo(60))),
+  maxAgeSeconds: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(60))),
 });
 export type ProviderUsageLimitsMcpInput = typeof ProviderUsageLimitsMcpInput.Type;
 
