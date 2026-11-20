@@ -12,8 +12,8 @@ rewrite.
 
 Requested on 2026-10-16.
 
-Agents in live full-access/default threads can call `t3_saved_connection_add`
-with a single-use pairing URL, or `t3_saved_connection_remove` with an environment
+Agents in live auto or full-access threads in default (not plan) mode can call
+`t3_saved_connection_add` with a single-use pairing URL, or `t3_saved_connection_remove` with an environment
 id, exact label, or host. Each call returns immediately and records a card in
 that thread. Add/Remove and Decline require one click in the desktop or web app.
 The app that answers changes its own saved connections through the same onboarding
@@ -28,6 +28,14 @@ the desktop or web app.
   the call return the answer itself. A waiting call replaces the notification;
   if it ends without returning the outcome (interrupt, failure), it sends the
   notification it suppressed. Never wait by default.
+- The card is the consent, so the mode gate admits `auto` as well as
+  `full-access`; supervised (`approval-required`, `auto-accept-edits`) and plan
+  threads stay refused. The request service and the orchestrator's record
+  command share `mayRequestSavedConnection`; the tool wrapper
+  (`writesWithCapability`) leaves modes to them.
+- `waitMs` is `Schema.Finite`, so the tool advertises a plain number with its
+  description; `Schema.Number` also offered the strings `Infinity`,
+  `-Infinity`, and `NaN` and dropped the description.
 - Keep the tool's pairing URL in server memory only. Cards, notifications, and the
   `t3_saved_connection_add` input in events and provider logs must contain no
   pairing token. Do not scrub pairing URLs from ordinary agent text or command

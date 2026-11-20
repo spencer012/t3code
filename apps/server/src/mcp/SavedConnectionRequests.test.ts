@@ -307,55 +307,64 @@ describe("SavedConnectionRequests", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
-  it.effect("refuses outside OAuth clients, inactive threads, plan mode, and limited access", () =>
-    Effect.gen(function* () {
-      const { requests, orchestrator } = yield* setup;
-      const outside = {
-        ...invocation,
-        thread: undefined,
-        client: { sessionId: "oauth", label: "Outside", access: "full-access" as const },
-      };
-      assert.equal(
-        (yield* requests.request(outside, input).pipe(Effect.flip)).code,
-        "thread_credential_required",
-      );
-      for (const mode of [
-        { runtimeMode: "approval-required" as const },
-        { interactionMode: "plan" as const },
-      ]) {
-        yield* orchestrator.dispatch({
-          type: "runtimeMode" in mode ? "thread.runtime-mode.set" : "thread.interaction-mode.set",
-          commandId: CommandId.make(JSON.stringify(mode)),
-          threadId,
-          ...mode,
-        } as import("@t3tools/contracts").OrchestrationV2ServerCommand);
+  it.effect(
+    "allows auto threads but refuses outside OAuth clients, inactive threads, plan mode, and limited access",
+    () =>
+      Effect.gen(function* () {
+        const { requests, orchestrator } = yield* setup;
+        const outside = {
+          ...invocation,
+          thread: undefined,
+          client: { sessionId: "oauth", label: "Outside", access: "full-access" as const },
+        };
         assert.equal(
-          (yield* requests.request(invocation, input).pipe(Effect.flip)).code,
-          "capability_denied",
+          (yield* requests.request(outside, input).pipe(Effect.flip)).code,
+          "thread_credential_required",
         );
         yield* orchestrator.dispatch({
           type: "thread.runtime-mode.set",
-          commandId: CommandId.make(`reset-runtime:${JSON.stringify(mode)}`),
+          commandId: CommandId.make("auto"),
           threadId,
-          runtimeMode: "full-access",
+          runtimeMode: "auto",
         });
+        assert.equal((yield* requests.request(invocation, input)).connectionStatus, "pending");
+        for (const mode of [
+          { runtimeMode: "auto-accept-edits" as const },
+          { interactionMode: "plan" as const },
+        ]) {
+          yield* orchestrator.dispatch({
+            type: "runtimeMode" in mode ? "thread.runtime-mode.set" : "thread.interaction-mode.set",
+            commandId: CommandId.make(JSON.stringify(mode)),
+            threadId,
+            ...mode,
+          } as import("@t3tools/contracts").OrchestrationV2ServerCommand);
+          assert.equal(
+            (yield* requests.request(invocation, input).pipe(Effect.flip)).code,
+            "capability_denied",
+          );
+          yield* orchestrator.dispatch({
+            type: "thread.runtime-mode.set",
+            commandId: CommandId.make(`reset-runtime:${JSON.stringify(mode)}`),
+            threadId,
+            runtimeMode: "full-access",
+          });
+          yield* orchestrator.dispatch({
+            type: "thread.interaction-mode.set",
+            commandId: CommandId.make(`reset-interaction:${JSON.stringify(mode)}`),
+            threadId,
+            interactionMode: "default",
+          });
+        }
         yield* orchestrator.dispatch({
-          type: "thread.interaction-mode.set",
-          commandId: CommandId.make(`reset-interaction:${JSON.stringify(mode)}`),
+          type: "thread.stop",
+          commandId: CommandId.make("stop"),
           threadId,
-          interactionMode: "default",
         });
-      }
-      yield* orchestrator.dispatch({
-        type: "thread.stop",
-        commandId: CommandId.make("stop"),
-        threadId,
-      });
-      assert.equal(
-        (yield* requests.request(invocation, input).pipe(Effect.flip)).code,
-        "parent_not_active",
-      );
-    }).pipe(Effect.provide(testLayer)),
+        assert.equal(
+          (yield* requests.request(invocation, input).pipe(Effect.flip)).code,
+          "parent_not_active",
+        );
+      }).pipe(Effect.provide(testLayer)),
   );
 
   it.effect("removes only after a client receipt and reports the environment id", () =>

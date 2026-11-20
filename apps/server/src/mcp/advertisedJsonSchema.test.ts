@@ -4,6 +4,7 @@ import { Tool } from "effect/ai";
 
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
+import { SavedConnectionsToolkit } from "./toolkits/savedConnections/tools.ts";
 import { ThemeToolkit } from "./toolkits/theme/tools.ts";
 
 it("drops JSON noise, merges tagged unions, and keeps null where it is required", () => {
@@ -62,9 +63,15 @@ it("advertises only string enum values, which Gemini requires", () => {
 });
 
 // Schema.Number adds an "Infinity" | "-Infinity" | "NaN" branch, so an agent sending "300" reads it as refused.
-it("advertises usage freshness as a plain number with its minimum", () => {
+it("advertises finite numeric inputs as plain numbers", () => {
   expect(advertisedJsonSchema(EnvironmentToolkit.tools.t3_provider_usage_limits)).toEqual({
     type: "object",
     properties: { maxAgeSeconds: { type: "number", minimum: 60 } },
   });
+  for (const tool of Object.values(SavedConnectionsToolkit.tools)) {
+    const waitMs = (advertisedJsonSchema(tool) as { properties: { waitMs: object } }).properties
+      .waitMs;
+    expect(waitMs).toMatchObject({ type: "number" });
+    expect(waitMs).not.toHaveProperty("anyOf");
+  }
 });

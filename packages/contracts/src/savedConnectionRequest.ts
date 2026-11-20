@@ -1,5 +1,16 @@
 import * as Schema from "effect/Schema";
 import { EnvironmentId, ThreadId, TrimmedNonEmptyString, TurnItemId } from "./baseSchemas.ts";
+import {
+  isRuntimeModeAbove,
+  type ProviderInteractionMode,
+  type RuntimeMode,
+} from "./providerPolicy.ts";
+
+/** The card is the user's consent, so auto threads may raise one; supervised and plan-mode threads may not. */
+export const mayRequestSavedConnection = (modes: {
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+}) => !isRuntimeModeAbove("auto", modes.runtimeMode) && modes.interactionMode === "default";
 
 export const SavedConnectionStatus = Schema.Literals([
   "pending",

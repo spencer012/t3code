@@ -4,6 +4,7 @@ import * as Stream from "effect/Stream";
 import {
   CommandId,
   MessageId,
+  mayRequestSavedConnection,
   TurnItemId,
   OrchestratorMcpFailure,
   SAVED_CONNECTION_FAILURE_MESSAGES,
@@ -26,7 +27,7 @@ import * as Layer from "effect/Layer";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
-import { assertFullAccess, assertLiveCaller, readCaller, unavailable } from "./threadAccess.ts";
+import { assertLiveCaller, readCaller, unavailable } from "./threadAccess.ts";
 
 type Card = Extract<OrchestrationV2TurnItem, { type: "saved_connection_request" }>;
 type Memory = { pairingUrl?: string | undefined; claimId?: string | undefined; expiresAt: number };
@@ -262,10 +263,12 @@ const make = Effect.gen(function* () {
           Effect.provideService(ThreadManagement.ThreadManagementService, threads),
         );
         yield* assertLiveCaller(caller);
-        yield* assertFullAccess(
-          caller,
-          "Saved connection requests require a live full-access/default calling thread.",
-        );
+        if (!mayRequestSavedConnection(caller.limits))
+          return yield* new OrchestratorMcpFailure({
+            code: "capability_denied",
+            message:
+              "Saved connection requests need a live calling thread in auto or full-access runtime mode and default interaction mode.",
+          });
         const existing = yield* readCard(threadId, id).pipe(Effect.mapError(unavailable));
         if (existing !== undefined) return resultOf(existing);
         if (

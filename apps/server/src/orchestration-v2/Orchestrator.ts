@@ -73,6 +73,7 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ProviderInteractionMode,
   isRuntimeModeAbove,
+  mayRequestSavedConnection,
   resolveProviderInstanceEnabled,
   resolveProjectProviderInstanceEnabled,
   type ProviderSessionId,
@@ -11630,8 +11631,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     if (
       existing === undefined &&
       (command.connectionStatus !== "pending" ||
-        projection.thread.runtimeMode !== "full-access" ||
-        projection.thread.interactionMode !== "default" ||
+        !mayRequestSavedConnection(projection.thread) ||
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
         !["preparing", "starting", "running"].includes(run.status))
@@ -11639,7 +11639,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
-        cause: "Saved connection requests require a live full-access/default thread.",
+        cause:
+          "Saved connection requests require a live auto or full-access thread in default mode.",
       });
     }
     const now = yield* DateTime.now;
