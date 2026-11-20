@@ -758,6 +758,6 @@ it.effect("saves an optional pairing label in both the target and profile", () =
     }).pipe(Effect.provide(layerPairingOnboarding(undefined, calls)));
     expect(registration.target.label).toBe("foo");
     expect(registration.profile.label).toBe("foo");
-    expect(registration.credential.token).toBe("bearer-token");
+    expect(registration.credential).toMatchObject({ token: "bearer-token" });
   }),
 );
