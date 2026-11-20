@@ -58,14 +58,22 @@ export function useAssetUrlRefresh(
   environmentId: EnvironmentId | null,
   resource: AssetResource | null,
 ): () => Promise<string | null> {
+  const create = useAssetUrlCreator(environmentId);
+  return () => (resource === null ? Promise.resolve(null) : create(resource));
+}
+
+/** Mints a fresh URL for any resource in the environment, such as files a viewer finds it needs. */
+export function useAssetUrlCreator(
+  environmentId: EnvironmentId | null,
+): (resource: AssetResource) => Promise<string | null> {
   const connection = usePreparedConnection(environmentId);
   const httpBaseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
   const refresh = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
     refresh: true,
   });
-  return async () => {
-    if (environmentId === null || resource === null || httpBaseUrl === null) return null;
+  return async (resource) => {
+    if (environmentId === null || httpBaseUrl === null) return null;
     const result = await refresh({ environmentId, input: { resource } });
     if (result._tag === "Failure") throw squashAtomCommandFailure(result);
     return resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);

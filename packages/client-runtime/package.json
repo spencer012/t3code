@@ -559,6 +559,10 @@
       "types": "./src/device/frame.ts",
       "default": "./src/device/frame.ts"
     },
+    "./model-viewer": {
+      "types": "./src/modelViewer.ts",
+      "default": "./src/modelViewer.ts"
+    },
     "./device/phone-viewer": {
       "types": "./src/device/phoneViewer.ts",
       "default": "./src/device/phoneViewer.ts"

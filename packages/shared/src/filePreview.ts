@@ -32,6 +32,7 @@ export type FilePreviewKind =
   | "rtf"
   | "epub"
   | "ipynb"
+  | "model"
   | "text"
   | "unsupported";
 
@@ -48,6 +49,7 @@ export function filePreviewKind(
   if (office) return office;
   const binary = binaryPreviewKind(file);
   if (binary) return binary;
+  if (richDocuments && modelPreviewFormat(file)) return "model";
   if (mime === "application/pdf") return "pdf";
   if (mime === "text/html") return "html";
   if (mime === "text/markdown" || mime === "text/x-markdown") return "markdown";
@@ -132,6 +134,73 @@ export function binaryPreviewKind(file: {
   return inferred === "application/vnd.sqlite3" ? "sqlite" : inferred ? "archive" : null;
 }
 
+const MODEL_MIME_TYPES = new Map([
+  [".glb", "model/gltf-binary"],
+  [".gltf", "model/gltf+json"],
+  [".obj", "model/obj"],
+  [".stl", "model/stl"],
+  [".3mf", "model/3mf"],
+  [".ply", "application/octet-stream"],
+  [".fbx", "application/octet-stream"],
+]);
+
+export type ModelPreviewFormat = "glb" | "gltf" | "obj" | "stl" | "3mf" | "ply" | "fbx";
+
+export function modelPreviewFormat(file: {
+  readonly name: string;
+  readonly mimeType?: string;
+}): ModelPreviewFormat | null {
+  const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  if (!MODEL_MIME_TYPES.has(extension)) return null;
+  const mime = file.mimeType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  // Operating systems label these extensions inconsistently (`application/sla`, `application/x-tgif`).
+  if (
+    /^(image|video|audio|font)\//.test(mime) ||
+    (mime.startsWith("text/") && mime !== "text/plain")
+  )
+    return null;
+  return extension.slice(1) as ModelPreviewFormat;
+}
+
+export function isWorkspaceModelPreviewPath(path: string): boolean {
+  return modelPreviewFormat({ name: path }) !== null;
+}
+
+/** Relative buffer and image URIs a glTF needs from beside it, as written in the file. */
+export function gltfExternalUris(json: unknown): ReadonlyArray<string> {
+  if (typeof json !== "object" || json === null) return [];
+  const uris = new Set<string>();
+  for (const key of ["buffers", "images"] as const) {
+    const entries = (json as Record<string, unknown>)[key];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      const uri: unknown = typeof entry === "object" && entry !== null ? entry.uri : undefined;
+      if (
+        typeof uri === "string" &&
+        uri.length > 0 &&
+        !/^(data|blob|https?):/i.test(uri) &&
+        !uri.startsWith("//")
+      )
+        uris.add(uri);
+    }
+  }
+  return [...uris];
+}
+
+/** The host path of a file a model references by a relative URI. */
+export function modelDependencyPath(modelPath: string, uri: string): string {
+  let relative = uri.split(/[?#]/, 1)[0] ?? uri;
+  try {
+    relative = decodeURIComponent(relative);
+  } catch {}
+  const separator = modelPath.includes("/") ? "/" : "\\";
+  const directory = modelPath.slice(
+    0,
+    Math.max(modelPath.lastIndexOf("/"), modelPath.lastIndexOf("\\")) + 1,
+  );
+  return directory + relative.replace(/[\\/]/g, separator);
+}
+
 export const FILE_TEXT_PREVIEW_MAX_BYTES = 1024 * 1024;
 
 const OFFICE_MIME_TYPES = {
@@ -210,6 +279,7 @@ export function hostPreviewMimeTypeFromExtension(extension: string): string | nu
     BROWSER_MIME_TYPE_BY_EXTENSION.get(extension.toLowerCase()) ??
     FONT_MIME_TYPE_BY_EXTENSION.get(extension.toLowerCase()) ??
     BINARY_MIME_TYPES.get(extension.toLowerCase()) ??
+    MODEL_MIME_TYPES.get(extension.toLowerCase()) ??
     (Object.hasOwn(OFFICE_MIME_TYPES, extension.toLowerCase().slice(1))
       ? OFFICE_MIME_TYPES[extension.toLowerCase().slice(1) as OfficePreviewKind]
       : null) ??
@@ -236,6 +306,7 @@ export function isWorkspacePreviewEntryPath(path: string): boolean {
     isWorkspaceBrowserPreviewPath(path) ||
     isWorkspaceImagePreviewPath(path) ||
     isWorkspaceFontPreviewPath(path) ||
+    isWorkspaceModelPreviewPath(path) ||
     officePreviewKind({ name: path }) !== null ||
     binaryPreviewKind({ name: path }) !== null
   );

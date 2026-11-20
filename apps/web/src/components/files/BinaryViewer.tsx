@@ -31,6 +31,7 @@ import { readBinaryPreview } from "./readBinaryPreview";
 import { previewErrorText, previewFailureText } from "./previewFailureMessages";
 
 const SourcePreview = lazy(() => import("./ReadOnlySourcePreview"));
+const ModelFilePreview = lazy(() => import("./ModelFilePreview"));
 type Archive = Extract<BinaryWorkerResult, { type: "archive" }>;
 type Database = Extract<BinaryWorkerResult, { type: "sqlite" }>;
 type Rows = Extract<BinaryWorkerResult, { type: "rows" }>;
@@ -65,7 +66,7 @@ function ArchiveFile(props: { readonly path: string; readonly bytes: Uint8Array<
   })();
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Create an object URL for the extracted image and revoke it when the entry changes or unmounts.
   useEffect(() => {
-    if (kind !== "image") return;
+    if (kind !== "image" && kind !== "model") return;
     const image = archiveImageUrl(props.path, props.bytes);
     // oxlint-disable-next-line react/set-state-in-effect -- Publish a Blob URL only after registering its cleanup.
     setUrl(image.url);
@@ -73,6 +74,14 @@ function ArchiveFile(props: { readonly path: string; readonly bytes: Uint8Array<
   }, [props.bytes, props.path, kind]);
   if (kind === "image")
     return url ? <PreviewImage key={url} src={url} name={props.path} /> : <FileSurfaceLoading />;
+  if (kind === "model")
+    return url ? (
+      <Suspense fallback={<FileSurfaceLoading />}>
+        <ModelFilePreview key={url} src={url} name={props.path} />
+      </Suspense>
+    ) : (
+      <FileSurfaceLoading />
+    );
   if (!text)
     return (
       <FileSurfaceFailure

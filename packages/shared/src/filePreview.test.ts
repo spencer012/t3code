@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   filePreviewKind,
   decodeFilePreviewText,
+  gltfExternalUris,
+  modelDependencyPath,
   FILE_TEXT_PREVIEW_MAX_BYTES,
   hostPreviewMimeTypeFromExtension,
   isWorkspaceFontPreviewPath,
@@ -188,8 +190,44 @@ describe("attachment preview classification", () => {
     ["archive.zip", "application/zip", "archive"],
     ["misleading.json", "application/pdf", "pdf"],
     ["misleading.pdf", "application/zip", "archive"],
+    ["robot.glb", "model/gltf-binary", "model"],
+    ["scene.GLTF", "application/json", "model"],
+    ["teapot.obj", "application/x-tgif", "model"],
+    ["bracket.stl", "application/sla", "model"],
+    ["scan.ply", "", "model"],
+    ["rig.fbx", "application/octet-stream", "model"],
+    ["print.3mf", "application/vnd.ms-3mfdocument", "model"],
+    ["notes.obj", "text/markdown", "markdown"],
   ])("classifies %s (%s) as %s", (name, mimeType, expected) => {
     expect(filePreviewKind({ name, mimeType })).toBe(expected);
+  });
+  it("keeps 3D models out of plain-document surfaces", () => {
+    expect(filePreviewKind({ name: "robot.glb" }, { richDocuments: false })).toBe("unsupported");
+    expect(isWorkspacePreviewEntryPath("assets/robot.glb")).toBe(true);
+    expect(hostPreviewMimeTypeFromExtension(".glb")).toBe("model/gltf-binary");
+  });
+  it("resolves the files a glTF loads from beside it", () => {
+    expect(
+      gltfExternalUris({
+        buffers: [
+          { uri: "scene%20data.bin" },
+          { uri: "data:application/octet-stream;base64,AA==" },
+        ],
+        images: [
+          { uri: "textures/wood.png" },
+          { uri: "https://example.com/remote.png" },
+          { bufferView: 2 },
+          { uri: "textures/wood.png" },
+        ],
+      }),
+    ).toEqual(["scene%20data.bin", "textures/wood.png"]);
+    expect(gltfExternalUris("not a glTF")).toEqual([]);
+    expect(modelDependencyPath("/repo/models/scene.gltf", "scene%20data.bin")).toBe(
+      "/repo/models/scene data.bin",
+    );
+    expect(modelDependencyPath("C:\\repo\\scene.gltf", "textures/wood.png?v=1")).toBe(
+      "C:\\repo\\textures\\wood.png",
+    );
   });
   it("rejects binary and invalid UTF-8 data", () => {
     expect(() => decodeFilePreviewText(new Uint8Array([65, 0, 66]))).toThrow("binary");

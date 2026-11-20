@@ -8,6 +8,7 @@ import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
 import {
   filePreviewKind,
+  modelDependencyPath,
   officePreviewKind,
   FILE_TEXT_PREVIEW_MAX_BYTES,
 } from "@t3tools/shared/filePreview";
@@ -27,7 +28,7 @@ import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { m, type MessageResolver } from "~/i18n/messages";
 
-import { useAssetUrlRefresh } from "~/assets/assetUrls";
+import { useAssetUrlCreator, useAssetUrlRefresh } from "~/assets/assetUrls";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { maskMarkdownFrontmatter } from "@t3tools/shared/markdownFrontmatter";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -64,6 +65,8 @@ const MermaidFilePreview = lazy(() =>
 );
 
 const SourcePreview = lazy(() => import("./ReadOnlySourcePreview"));
+
+const ModelFilePreview = lazy(() => import("./ModelFilePreview"));
 
 const STALE_URL_MS = 5 * 60_000;
 
@@ -157,6 +160,17 @@ export function AttachmentFilePreview(props: {
     props.file ? null : resource,
   );
   const prepareDownload = useAssetUrlRefresh(props.asset?.environmentId ?? null, downloadResource);
+  const createAssetUrl = useAssetUrlCreator(props.asset?.environmentId ?? null);
+  // Only a host file has a folder to load a glTF's buffers and textures from.
+  const resolveModelDependency =
+    resource?._tag === "media-file"
+      ? (uri: string) =>
+          createAssetUrl({
+            ...resource,
+            path: modelDependencyPath(resource.path, uri),
+            disposition: "attachment",
+          })
+      : undefined;
   const [saving, setSaving] = useState(false);
   const [localUrl, setLocalUrl] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
@@ -341,6 +355,15 @@ export function AttachmentFilePreview(props: {
   ) : kind === "font" ? (
     <Suspense fallback={<FileSurfaceLoading />}>
       <FontFilePreview src={url} name={props.name} />
+    </Suspense>
+  ) : kind === "model" ? (
+    <Suspense fallback={<FileSurfaceLoading />}>
+      <ModelFilePreview
+        key={url}
+        src={url}
+        name={props.name}
+        resolveDependency={resolveModelDependency}
+      />
     </Suspense>
   ) : officeKind ? (
     <Suspense fallback={<FileSurfaceLoading />}>

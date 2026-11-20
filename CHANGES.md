@@ -290,3 +290,28 @@ them as `annotations[question].notes`, OpenCode over ACP sends them in the
 Grok, Muse and OpenCode keep their native array handling. When upstream changes
 `packages/client-runtime/src/state/pendingUserInput.ts` or an adapter's answer
 mapping, keep this shape and each adapter's handling of it.
+
+## 3D model preview
+
+Requested on 2026-11-20.
+
+Web and desktop preview `.glb`, `.gltf`, `.obj`, `.stl`, `.ply`, `.fbx` and
+`.3mf` files in an interactive three.js viewer, wherever images and HTML
+already preview: the Files panel (including workspace files opened from chat
+links), chat attachments and archive entries. The viewer orbits, pans and zooms. It has toggles for
+wireframe, grid, Y-up or Z-up (STL and 3MF default to Z-up) and animation
+playback, plus a reset view. It renders only when the view changes or an
+animation plays.
+
+A `.gltf` that names external buffers or textures resolves each one to a
+signed `attachment` asset URL beside the model. Any other relative URL
+resolves to nothing, so a model never requests paths on the app origin.
+Attachments and archive entries have no folder to read, so they show an error
+that suggests exporting as `.glb`. Mobile keeps its existing file handling
+because it has no 3D renderer.
+
+The classification lives in `packages/shared/src/filePreview.ts`
+(`modelPreviewFormat`, and the model MIME types allowed for host previews).
+The viewer lives in `packages/client-runtime/src/modelViewer.ts`. When
+upstream reworks file previews, route model files to the same viewer and keep
+the server's preview MIME and workspace-path gates allowing these extensions.
