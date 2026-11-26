@@ -1,11 +1,14 @@
 import { executeSavedConnectionRequest } from "@t3tools/client-runtime/saved-connection-request";
-import type { EnvironmentId, SavedConnectionRequestResult } from "@t3tools/contracts";
 import { ConnectionOnboarding } from "@t3tools/client-runtime/connection";
 import {
   createAtomCommandScheduler,
   createRuntimeCommand,
 } from "@t3tools/client-runtime/state/runtime";
-import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
+import type {
+  DesktopSshEnvironmentTarget,
+  EnvironmentId,
+  SavedConnectionRequestResult,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { connectionAtomRuntime } from "./runtime";
