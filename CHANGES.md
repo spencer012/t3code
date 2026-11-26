@@ -251,7 +251,7 @@ upstream main at `f5f8c8d18b`. This branch includes the private release channel,
 saved-connection request cards with JSON results and optional waiting, provider
 quota reads, custom branding, and the SFW build wrappers.
 Use this branch for future custom releases instead of developing each feature on
-separate long-lived branches. The release version is `0.1.11-custom.1`.
+separate long-lived branches. The release version is `0.1.12-custom.1`.
 
 Upstream now lints for untranslated copy in web, mobile and client-runtime.
 Custom UI strings follow the same rules: wrap them, run `vp run i18n:generate`
